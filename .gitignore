@@ -47,3 +47,12 @@ src/main/resources/static/credentials/7290d394-d5ed-423b-b262-5504b87b3ecd_ally-
 Ally/.env
 ally-frontend/.env
 Ally-FinetuneRAG/.env
+
+
+### ALLY Python / RAG ###
+Ally-FinetuneRAG/.venv/
+Ally-FinetuneRAG/__pycache__/
+Ally-FinetuneRAG/**/*.pyc
+
+# Generated Juris processing/indexing data
+Ally-FinetuneRAG/processed-for-rag/
