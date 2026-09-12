@@ -1,5 +1,6 @@
 package com.wachichaw.AllyRAG;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 @Data
@@ -9,6 +10,9 @@ public class LegalCase {
     private String content;
     private String citation;
     private String section;
+
+    @JsonProperty("source_url")
+    private String sourceUrl;
 
     public String getTitle() {
         return title;
@@ -48,5 +52,13 @@ public class LegalCase {
 
     public void setSection(String section) {
         this.section = section;
+    }
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public void setSourceUrl(String sourceUrl) {
+        this.sourceUrl = sourceUrl;
     }
 }

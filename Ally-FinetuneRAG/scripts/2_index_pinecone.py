@@ -159,7 +159,8 @@ def prepare_vector_batch(chunks: List[Dict], model: SentenceTransformer,
                 'chunk_type': chunk.get('chunk_type', 'unknown'),
                 'text': truncate_text(text, 8000), 
                 'chunk_id': str(chunk_id),
-                'case_id': chunk.get('case_id', '')
+                'case_id': chunk.get('case_id', ''),
+                'source_url': chunk.get('source_url', '')
             }
             
             # Add optional metadata if available
@@ -422,7 +423,6 @@ Tips for Philippines → US East-1:
                 index.upsert(
                     vectors=vectors, 
                     namespace='',
-                    async_req=True  # Don't block waiting for confirmation
                 )
                 
                 total_uploaded += len(vectors)
