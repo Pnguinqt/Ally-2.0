@@ -129,6 +129,21 @@ class SupremeCourtDataProcessor:
             if any(keyword in text for keyword in keywords):
                 return category
         return 'general'
+
+    def get_source_link(self, case_number: str) -> str:
+        """Get official Supreme Court source link for a case"""
+        source_links = {
+            "G.R. No. 227896, January 29, 2020":
+                "https://elibrary.judiciary.gov.ph/thebookshelf/showdocs/1/65896",
+
+            "G.R. No. 236596, January 29, 2020":
+                "https://elibrary.judiciary.gov.ph/thebookshelf/showdocs/1/65899",
+
+            "G.R. No. 248395, January 29, 2020":
+                "https://elibrary.judiciary.gov.ph/thebookshelf/showdocs/1/66067",
+        }
+
+        return source_links.get(case_number, "")
     
     def extract_case_data(self, row: pd.Series) -> Dict:
         """Extract case data from CSV row"""
@@ -146,8 +161,11 @@ class SupremeCourtDataProcessor:
             'source_file': row.get('source_file', ''),
             'source_year': row.get('source_year', ''),
             'date': 'Unknown',
-            'category': None
-        }
+            'category': None,
+            'source_url': self.get_source_link(case_number)
+            }
+
+        
         
         case_data['category'] = self.extract_category(
             case_title, case_data['decision'], case_data['ruling']
@@ -179,6 +197,7 @@ class SupremeCourtDataProcessor:
                 'case_title': case_data['case_title'],
                 'chunk_type': 'facts',
                 'text': f"{base_context}\n\nFACTS:\n{case_data['facts']}",
+                'source_url': case_data.get('source_url', ''),
                 'metadata': {
                     'section': 'facts',
                     'category': case_data['category'],
@@ -195,6 +214,7 @@ class SupremeCourtDataProcessor:
                 'case_title': case_data['case_title'],
                 'chunk_type': 'decision',
                 'text': f"{base_context}\n\nDECISION:\n{case_data['decision']}",
+                'source_url': case_data.get('source_url', ''),
                 'metadata': {
                     'section': 'decision',
                     'category': case_data['category'],
@@ -211,6 +231,7 @@ class SupremeCourtDataProcessor:
                 'case_title': case_data['case_title'],
                 'chunk_type': 'ruling',
                 'text': f"{base_context}\n\nRULING:\n{case_data['ruling']}",
+                'source_url': case_data.get('source_url', ''),
                 'metadata': {
                     'section': 'ruling',
                     'category': case_data['category'],
@@ -227,6 +248,7 @@ class SupremeCourtDataProcessor:
                 'case_title': case_data['case_title'],
                 'chunk_type': 'verdict',
                 'text': f"{base_context}\n\nVERDICT:\n{case_data['verdict']}",
+                'source_url': case_data.get('source_url', ''),
                 'metadata': {
                     'section': 'verdict',
                     'category': case_data['category'],

@@ -319,6 +319,16 @@ const AllyConsultationChat = () => {
                                     {legalCase.citation}
                                   </p>
                                 )}
+                                {typeof legalCase.source_url === 'string' && legalCase.source_url.trim() && (
+                                  <a
+                                    href={legalCase.source_url.trim()}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+                                  >
+                                    View Official Supreme Court Decision
+                                  </a>
+                                )}
                               </div>
                             ))}
                           </div>

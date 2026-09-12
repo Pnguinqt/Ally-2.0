@@ -3,11 +3,11 @@ ALLY FastAPI Server - DeepSeek Classification
 Run with: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 Render RAG env vars:
- PINECONE_API_KEY=<your-pinecone-api-key>
- PINECONE_INDEX_NAME=ally-supreme-court-cases
- DEEPSEEK_API_KEY=<your-deepseek-api-key>
- DEEPSEEK_BASE_URL=https://api.deepseek.com
- DEEPSEEK_MODEL=deepseek-v4-flash
+PINECONE_API_KEY=<your-pinecone-api-key>
+PINECONE_INDEX_NAME=ally-supreme-court-cases
+DEEPSEEK_API_KEY=<your-deepseek-api-key>
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
 """
 
 from fastapi import FastAPI, HTTPException
@@ -67,6 +67,8 @@ class SourceInfo(BaseModel):
     chunk_type: str
     score: str
     category: str
+    source_url: Optional[str] = None
+
 
 class QueryResponse(BaseModel):
     answer: str
@@ -465,7 +467,8 @@ async def search_cases(request: SearchRequest):
                 "score": round(match['score'] * 100, 1),
                 "content": metadata.get("text", ""),
                 "citation": metadata.get("case_number", ""),
-                "section": metadata.get("chunk_type", "")
+                "section": metadata.get("chunk_type", ""),
+                "source_url": metadata.get("source_url", "")
             })
         
         return {
