@@ -50,7 +50,7 @@ Ally-FinetuneRAG/.env
 
 
 ### ALLY Python / RAG ###
-Ally-FinetuneRAG/.venv/
+Ally-FinetuneRAG/.venv/ 
 Ally-FinetuneRAG/__pycache__/
 Ally-FinetuneRAG/**/*.pyc
 

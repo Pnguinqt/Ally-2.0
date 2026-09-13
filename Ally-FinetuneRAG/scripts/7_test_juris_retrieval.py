@@ -85,7 +85,7 @@ else:
         print(f"Case Number: {metadata.get('case_number', 'N/A')}")
         print(f"Case Title: {metadata.get('case_title', 'N/A')}")
         print(f"Category: {metadata.get('category', 'N/A')}")
-        print(f"Source: {metadata.get('source', 'N/A')}")
+        print(f"Source: {metadata.get('source_url', 'N/A')}")
         print(f"Section: {metadata.get('section', 'N/A')}")
 
         text = metadata.get("text", "")

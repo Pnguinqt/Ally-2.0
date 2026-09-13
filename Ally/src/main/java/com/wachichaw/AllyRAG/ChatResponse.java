@@ -5,6 +5,8 @@ import java.util.List;
 
 @Data
 public class ChatResponse {
+    private String conversationId;
+    private String requestId;
     private String response;
     private List<LegalCase> relevantCases;
     private Integer caseCount;

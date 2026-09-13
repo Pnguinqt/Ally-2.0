@@ -14,6 +14,19 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "ai_chat_history")
 public class AiChatHistoryEntity {
+    @Column(name = "conversation_id", length = 36)
+    private String conversationId;
+    @Column(name = "request_id", length = 36)
+    private String requestId;
+    @Column(name = "response_metadata", columnDefinition = "LONGTEXT")
+    private String responseMetadata;
+
+    public String getConversationId() { return conversationId; }
+    public void setConversationId(String value) { conversationId = value; }
+    public String getRequestId() { return requestId; }
+    public void setRequestId(String value) { requestId = value; }
+    public String getResponseMetadata() { return responseMetadata; }
+    public void setResponseMetadata(String value) { responseMetadata = value; }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

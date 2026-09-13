@@ -1,19 +1,73 @@
+import { historyMessages, mergeHistory } from '../services/consultationHistory';
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Search, MessageSquarePlus, History, RotateCcw, Trash2 } from 'lucide-react';
 import { sendConsultationMessage, checkRagHealth, getConsultationHistory, deleteConsultationHistory } from '../services/allyConsultationService';
 import MarkdownText from './shared/MarkdownText';
 
+const storageKey = () => `ally-conversation:${localStorage.getItem('userId') || 'guest'}`;
+const readSavedChat = () => {
+  try { return JSON.parse(localStorage.getItem(storageKey())) || {}; }
+  catch { return {}; }
+};
+
 const AllyConsultationChat = () => {
-  const [messages, setMessages] = useState([]);
+  const [savedChat] = useState(readSavedChat);
+  const [conversationId, setConversationId] = useState(() => savedChat.conversationId || crypto.randomUUID());
+  const activeConversation = useRef(conversationId);
+  const [pending, setPending] = useState(localStorage.getItem('token') ? savedChat.pending || null : null);
+  const [messages, setMessages] = useState(Array.isArray(savedChat.messages) ? savedChat.messages : []);
   const messageIdCounter = useRef(1);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [hasChatStarted, setHasChatStarted] = useState(false); // Track if user has sent first message
-  const [useRAG, setUseRAG] = useState(true); // NEW: RAG toggle state
+  const [hasChatStarted, setHasChatStarted] = useState(Boolean(savedChat.messages?.length)); // Restore the active conversation
+  const [useRAG, setUseRAG] = useState(savedChat.useRAG ?? true); // Persist case-search preference
   const [ragAvailable, setRagAvailable] = useState(true); // NEW: RAG service status
   const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const activeRequest = useRef(savedChat.pending?.requestId);
   const [historyLoading, setHistoryLoading] = useState(false);
   const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    try { localStorage.setItem(storageKey(), JSON.stringify({ conversationId, messages, pending, useRAG })); }
+    catch { console.error('Unable to save the local chat copy.'); }
+  }, [conversationId, messages, pending, useRAG]);
+
+  // Recover the server's saved reply even if the browser refreshed during generation.
+  useEffect(() => {
+    if (!localStorage.getItem('token')) return;
+    let cancelled = false;
+    let timer;
+    const restore = async () => {
+      try {
+        const turns = await getConsultationHistory(100, conversationId);
+        if (cancelled) return;
+        const finished = pending && turns.some(turn => turn.requestId === pending.requestId);
+        if (turns.length && (!pending || finished)) {
+          setMessages(prev => mergeHistory(prev, turns));
+          setHasChatStarted(true);
+          if (finished) { setPending(null); setIsTyping(false); }
+        }
+        if (pending && !finished) {
+          if (Date.now() - pending.startedAt > 600000) {
+            setPending(null);
+            setIsTyping(false);
+            setMessages(prev => [...prev, { id: crypto.randomUUID(), sender: 'ai', text: 'The connection was interrupted before I could recover your answer. Your messages are saved. Please send your question again.' }]);
+          } else timer = setTimeout(restore, 3000);
+        }
+      } catch (error) {
+        if (!cancelled && pending) {
+          if (error.response?.status === 401 || Date.now() - pending.startedAt > 600000) {
+            setPending(null);
+            setIsTyping(false);
+            setMessages(prev => [...prev, { id: crypto.randomUUID(), sender: 'ai', text: 'Unable to recover the reply. Please check your connection and sign in again if your session expired. Your messages remain saved on this browser.' }]);
+          } else timer = setTimeout(restore, 5000);
+        }
+      }
+    };
+    restore();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [conversationId, pending]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -38,8 +92,13 @@ const AllyConsultationChat = () => {
 
     setHistoryLoading(true);
     try {
-      const historyItems = await getConsultationHistory(50);
-      setHistory(historyItems);
+      const historyItems = await getConsultationHistory(100);
+      const conversations = new Map();
+      for (const item of historyItems) {
+        const key = item.conversationId || `legacy-${item.historyId}`;
+        if (!conversations.has(key)) conversations.set(key, item);
+      }
+      setHistory([...conversations.values()]);
     } catch (error) {
       console.error('Error loading AI chat history:', error);
     } finally {
@@ -58,19 +117,21 @@ const AllyConsultationChat = () => {
     return () => {
       window.removeEventListener('reset-chat', handleResetChat);
     };
-  }, []);
+  });
 
-  const getAIResponse = async (userMessage) => {
+  const getAIResponse = async (userMessage, chatId, requestId) => {
     setIsTyping(true);
-    
+    let recovering = false;
     try {
-      const data = await sendConsultationMessage(userMessage, useRAG);
+      const data = await sendConsultationMessage(userMessage, useRAG, chatId, requestId, messages);
       
+      if (activeConversation.current !== chatId || activeRequest.current !== requestId) return;
       // data is now always an object with { response, relevantCases, etc. }
       const aiMessage = {
         id: `msg-${Date.now()}-${messageIdCounter.current++}`,
         text: data.response,  // Changed from response.response to data.response
         sender: 'ai',
+        requestId,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         relevantCases: data.relevantCases,
         caseCount: data.caseCount,
@@ -78,9 +139,11 @@ const AllyConsultationChat = () => {
         ragEnabled: data.ragEnabled
       };
       
-      setMessages(prev => [...prev, aiMessage]);
+      setMessages(prev => [...prev.filter(message => !(message.sender === 'ai' && message.requestId === requestId)), aiMessage]);
       loadHistory();
     } catch {
+      if (activeConversation.current !== chatId || activeRequest.current !== requestId) return;
+      if (localStorage.getItem('token')) { recovering = true; return; }
       const errorMessage = {
         id: `msg-${Date.now()}-${messageIdCounter.current++}`,
         text: "Sorry, I'm having trouble connecting to the legal assistant. Please try again later.",
@@ -90,16 +153,19 @@ const AllyConsultationChat = () => {
       
       setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsTyping(false);
+      if (!recovering && activeConversation.current === chatId && activeRequest.current === requestId) { setIsTyping(false); setPending(null); }
     }
   };
 
   const handleSendMessage = () => {
-    if (inputMessage.trim() === '') return;
+    if (inputMessage.trim() === '' || isTyping || pending) return;
 
     setHasChatStarted(true); // Mark chat as started
+    setShowHistory(false);
 
+    const requestId = crypto.randomUUID();
     const userMessage = {
+      requestId,
       id: `msg-${Date.now()}-${messageIdCounter.current++}`,
       text: inputMessage,
       sender: 'user',
@@ -109,7 +175,12 @@ const AllyConsultationChat = () => {
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     
-    getAIResponse(inputMessage);
+    activeRequest.current = requestId;
+    const pendingRequest = { requestId, startedAt: Date.now() };
+    setPending(pendingRequest);
+    // Save before starting the request so an immediate refresh retains the question.
+    try { localStorage.setItem(storageKey(), JSON.stringify({ conversationId, messages: [...messages, userMessage], pending: pendingRequest, useRAG })); } catch { /* Server history remains available */ }
+    getAIResponse(inputMessage, conversationId, requestId);
   };
 
   const handleKeyPress = (e) => {
@@ -119,42 +190,31 @@ const AllyConsultationChat = () => {
     }
   };
 
-  const handleNewChat = async () => {
-    try {
-      await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/chat/reset`, {
-        method: 'GET',
-      });
-      setMessages([]);
-      messageIdCounter.current = 1;
-      setHasChatStarted(false); // Reset to initial centered state
-    } catch (error) {
-      console.error('Error resetting chat:', error);
-    }
+  const handleNewChat = () => {
+    const id = crypto.randomUUID();
+    activeConversation.current = id;
+    setConversationId(id);
+    setMessages([]);
+    setPending(null);
+    setIsTyping(false);
+    setInputMessage('');
+    setHasChatStarted(false);
+    setShowHistory(false);
+    loadHistory();
   };
 
-  const openHistoryItem = (item) => {
-    const createdAt = item.createdAt ? new Date(item.createdAt) : new Date();
-    const timestamp = createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    setMessages([
-      {
-        id: `history-user-${item.historyId}`,
-        text: item.userMessage,
-        sender: 'user',
-        timestamp
-      },
-      {
-        id: `history-ai-${item.historyId}`,
-        text: item.aiResponse,
-        sender: 'ai',
-        timestamp,
-        relevantCases: null,
-        caseCount: item.caseCount,
-        confidence: item.confidence,
-        ragEnabled: item.ragEnabled
-      }
-    ]);
-    setHasChatStarted(true);
+  const openHistoryItem = async (item) => {
+    const id = item.conversationId || crypto.randomUUID();
+    try {
+      const turns = item.conversationId ? await getConsultationHistory(100, id) : [item];
+      activeConversation.current = id;
+      setConversationId(id);
+      setPending(null);
+      setIsTyping(false);
+      setMessages(historyMessages(turns));
+      setHasChatStarted(true);
+      setShowHistory(false);
+    } catch { alert('Unable to open this conversation. Please try again.'); }
   };
 
   const deleteHistoryItem = async (item, event) => {
@@ -164,7 +224,9 @@ const AllyConsultationChat = () => {
     if (!confirmed) return;
 
     try {
-      await deleteConsultationHistory(item.historyId);
+      const turns = item.conversationId ? await getConsultationHistory(100, item.conversationId) : [item];
+      await Promise.all(turns.map(turn => deleteConsultationHistory(turn.historyId)));
+      if (item.conversationId === activeConversation.current) handleNewChat();
       setHistory(prev => prev.filter(historyItem => historyItem.historyId !== item.historyId));
       setMessages(prev => prev.filter(message =>
         message.id !== `history-user-${item.historyId}` && message.id !== `history-ai-${item.historyId}`
@@ -177,9 +239,12 @@ const AllyConsultationChat = () => {
 
   return (
     <>
-      {!hasChatStarted ? (
+      {!hasChatStarted || showHistory ? (
         // INITIAL STATE - Before first message (centered)
         <div className="flex flex-col items-center justify-center min-h-[calc(90vh-64px)] px-4">
+          {showHistory && messages.length > 0 && (
+            <button onClick={() => setShowHistory(false)} className="mb-4 text-blue-600 hover:underline">Back to conversation</button>
+          )}
           <h1 className="text-4xl font-semibold mb-8 text-center text-gray-800">
             How can <span className="text-blue-600">ALLY</span> help you today?
           </h1>
@@ -210,11 +275,11 @@ const AllyConsultationChat = () => {
                 onKeyPress={handleKeyPress}
                 placeholder="Ask any legal question here..."
                 className="flex-1 outline-none text-base bg-transparent"
-                disabled={isTyping}
+                disabled={isTyping || Boolean(pending)}
               />
               <button
                 onClick={handleSendMessage}
-                disabled={inputMessage.trim() === '' || isTyping}
+                disabled={inputMessage.trim() === '' || isTyping || Boolean(pending)}
                 className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all shadow-md"
               >
                 <Send className="w-5 h-5" />
@@ -354,7 +419,7 @@ const AllyConsultationChat = () => {
                 </div>
               ))}
         
-              {isTyping && (
+              {(isTyping || pending) && (
                 <div className="flex justify-start">
                   <div className="px-5 py-3 bg-gray-100 rounded-3xl">
                     <div className="flex space-x-1">
@@ -403,7 +468,7 @@ const AllyConsultationChat = () => {
                   </button>
 
                   <button
-                    onClick={loadHistory}
+                    onClick={() => { loadHistory(); setShowHistory(true); }}
                     className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
                     title="Refresh AI chat history"
                   >
@@ -428,11 +493,11 @@ const AllyConsultationChat = () => {
                   onKeyPress={handleKeyPress}
                   placeholder="Ask any legal question here..."
                   className="flex-1 outline-none text-sm bg-transparent"
-                  disabled={isTyping}
+                  disabled={isTyping || Boolean(pending)}
                 />
                 <button
                   onClick={handleSendMessage}
-                  disabled={inputMessage.trim() === '' || isTyping}
+                  disabled={inputMessage.trim() === '' || isTyping || Boolean(pending)}
                   className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all"
                 >
                   <Send className="w-4 h-4" />

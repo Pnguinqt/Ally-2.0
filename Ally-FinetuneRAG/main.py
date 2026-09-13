@@ -462,8 +462,9 @@ async def search_cases(request: SearchRequest):
         cases = []
         for match in relevant_matches:
             metadata = match['metadata']
+            case_title = metadata.get("case_title") or metadata.get("case_number") or "Unknown Case"
             cases.append({
-                "title": metadata.get("case_title", "Unknown"),
+                "title": case_title,
                 "score": round(match['score'] * 100, 1),
                 "content": metadata.get("text", ""),
                 "citation": metadata.get("case_number", ""),
