@@ -151,14 +151,11 @@
             String token = String.valueOf((int)(Math.random() * 900000) + 100000);
             tempClientStorageService.saveUnverifiedUser(token, client);
             tempClientStorageService.getUnverifiedUser(token);
-            System.out.println("Lawyer retrieved: " + profilePhoto);
-            System.out.println("Lawyer email: " + client.getEmail());
-            System.out.println("Lawyer first name: " + Fname);
-            System.out.println("Lawyer password: " + token);
             ClientEntity savedClient = client;
             try {
                 verificationService.sendVerificationEmail(savedClient.getEmail(), savedClient.getFname(), token);
             } catch (RuntimeException e) {
+                tempClientStorageService.removeUnverifiedUser(token);
                 if (!localDev) {
                     throw e;
                 }

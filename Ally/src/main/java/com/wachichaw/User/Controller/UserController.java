@@ -293,7 +293,7 @@ public class UserController {
     }
 
     @PostMapping(value = "/Client", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ClientEntity> createClient(
+    public ResponseEntity<?> createClient(
             @RequestParam("email") String email,
             @RequestParam("password") String password,
             @RequestParam("Fname") String fname,
@@ -305,10 +305,27 @@ public class UserController {
             @RequestParam("zip") String zip,
             @RequestParam(value = "profilePhoto", required = false) MultipartFile profilePhotoFile)
             throws java.io.IOException {
-        String profilePhotoUrl = storeUpload("profile_pictures", profilePhotoFile);
-        ClientEntity client = userService.createClient(email, password, fname, lname,
-                phoneNumber, address, city, province, zip, profilePhotoUrl);
-        return ResponseEntity.ok(client);
+        try {
+            String profilePhotoUrl = storeUpload("profile_pictures", profilePhotoFile);
+            ClientEntity client = userService.createClient(email, password, fname, lname,
+                    phoneNumber, address, city, province, zip, profilePhotoUrl);
+            // Pending registrations contain a password; never serialize the entity here.
+            return ResponseEntity.ok(Map.of("email", client.getEmail(), "verified", client.isVerified()));
+        } catch (com.wachichaw.EmailConfig.Service.EmailDeliveryException exception) {
+            return ResponseEntity.status(503).body(Map.of("message",
+                "We couldn't send your verification email. Please try registering again shortly."));
+        } catch (ResponseStatusException exception) {
+            return ResponseEntity.status(exception.getStatusCode()).body(Map.of("message",
+                exception.getStatusCode().value() == 409 ? "Email already exists." : "Registration could not be completed."));
+        } catch (org.springframework.dao.DataIntegrityViolationException exception) {
+            return ResponseEntity.status(409).body(Map.of("message", "Registration conflicts with an existing account or invalid account details."));
+        } catch (org.springframework.dao.DataAccessException exception) {
+            org.slf4j.LoggerFactory.getLogger(UserController.class).error("Registration database operation failed ({})", exception.getClass().getSimpleName());
+            return ResponseEntity.status(503).body(Map.of("message", "Registration is temporarily unavailable. Please try again shortly."));
+        } catch (Exception exception) {
+            org.slf4j.LoggerFactory.getLogger(UserController.class).error("Registration failed ({})", exception.getClass().getSimpleName());
+            return ResponseEntity.status(500).body(Map.of("message", "Registration could not be completed. Please try again."));
+        }
     }
 
     @PostMapping("/Admin")

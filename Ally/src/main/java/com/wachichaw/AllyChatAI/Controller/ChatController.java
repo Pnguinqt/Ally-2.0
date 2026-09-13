@@ -482,7 +482,10 @@ public class ChatController {
     public ResponseEntity<Map<String, Object>> healthCheck() {
         Map<String, Object> health = new HashMap<>();
         health.put("status", "running");
-        health.put("ragService", ragService.isRagServiceHealthy() ? "running" : "down");
+        boolean ragAvailable = ragService.isRagServiceHealthy();
+        health.put("ragService", ragAvailable ? "running" : "down");
+        health.put("ragAvailable", ragAvailable);
+        health.put("message", ragAvailable ? "RAG available" : "RAG unavailable. Case search is temporarily unavailable; AI chat can still be used.");
         health.put("relevanceThreshold", relevanceThreshold + "%");
         health.put("classifier", "DeepSeek V4 Flash");
         return ResponseEntity.ok(health);

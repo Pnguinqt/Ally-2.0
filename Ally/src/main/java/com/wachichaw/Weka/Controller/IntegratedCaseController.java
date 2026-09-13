@@ -16,7 +16,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/case-management")
-@CrossOrigin(origins = "*")
 public class IntegratedCaseController {
     
     @Autowired

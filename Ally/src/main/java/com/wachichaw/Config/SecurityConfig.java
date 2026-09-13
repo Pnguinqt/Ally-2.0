@@ -1,14 +1,9 @@
 package com.wachichaw.Config;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -20,7 +15,6 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 
@@ -29,12 +23,6 @@ public class SecurityConfig {
 
     private final OAuth2LoginSuccessHandler oauthLogin;
     private final ClientRegistrationRepository clientRegistrationRepository;
-
-    @Value("${frontend.url}")
-    private String frontendUrl;
-
-    @Value("${cors.allowed-origin-patterns}")
-    private String corsAllowedOriginPatterns;
 
     public SecurityConfig(
             OAuth2LoginSuccessHandler oauthLogin,
@@ -52,6 +40,7 @@ public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         .sessionManagement(session -> session
             .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)) // <-- Change this!
         .authorizeHttpRequests(authorize -> authorize
+            .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
             .requestMatchers(
                 "/api-docs/**",
                 "/swagger-ui/**",
@@ -98,31 +87,13 @@ public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return source;
     }
 
-    @Bean
-    public FilterRegistrationBean<CorsFilter> corsFilterRegistration() {
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", corsConfiguration());
-
-        FilterRegistrationBean<CorsFilter> registration = new FilterRegistrationBean<>(new CorsFilter(source));
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
-        return registration;
-    }
-
     private CorsConfiguration corsConfiguration() {
         CorsConfiguration configuration = new CorsConfiguration();
-        List<String> allowedOriginPatterns = new ArrayList<>(Arrays.asList(corsAllowedOriginPatterns.split(",")));
-        if (frontendUrl != null && !frontendUrl.isBlank()) {
-            allowedOriginPatterns.add(frontendUrl);
-        }
-        configuration.setAllowedOriginPatterns(
-            allowedOriginPatterns.stream()
-                .map(String::trim)
-                .filter(origin -> !origin.isEmpty())
-                .distinct()
-                .toList()
-        );
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS")); // Allowed HTTP methods
-        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowedOrigins(List.of(
+            "https://ally-frontend-eta.vercel.app", "http://localhost:5173"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Requested-With", "X-XSRF-TOKEN"));
+        configuration.setMaxAge(3600L);
         configuration.setExposedHeaders(List.of("Authorization"));
         configuration.setAllowCredentials(true);
         return configuration;
