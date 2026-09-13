@@ -14,10 +14,23 @@ public class RagService {
     @Value("${rag.service.url}")
     private String ragServiceUrl;
 
-    private final RestTemplate restTemplate;
+    @Value("${rag.enabled:false}")
+    private boolean enabled;
 
-    public RagService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    private final RestTemplate restTemplate;
+    private final RestTemplate healthRestTemplate;
+
+    public RagService(@Value("${rag.service.timeout:10000}") int timeout,
+                      @Value("${rag.health.timeout:2000}") int healthTimeout) {
+        this.restTemplate = client(timeout);
+        this.healthRestTemplate = client(healthTimeout);
+    }
+
+    private RestTemplate client(int timeout) {
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Math.max(1, Math.min(timeout, 3000)));
+        factory.setReadTimeout(Math.max(1, timeout));
+        return new RestTemplate(factory);
     }
 
     /**
@@ -25,6 +38,12 @@ public class RagService {
      * This runs REGARDLESS of RAG setting
      */
     public ValidationResponse validateQuestion(String query) {
+        if (!enabled) {
+            ValidationResponse fallback = new ValidationResponse();
+            fallback.setValid(true);
+            fallback.setMethod("rag_disabled");
+            return fallback;
+        }
         try {
             String url = ragServiceUrl + "/api/validate";
 
@@ -63,6 +82,7 @@ public class RagService {
      * Search relevant cases (only when RAG is enabled)
      */
     public RagSearchResponse searchRelevantCases(String query, int topK) {
+        if (!enabled) return new RagSearchResponse();
         try {
             String url = ragServiceUrl + "/search";
 
@@ -91,9 +111,10 @@ public class RagService {
     }
 
     public boolean isRagServiceHealthy() {
+        if (!enabled) return false;
         try {
             String healthUrl = ragServiceUrl + "/health";
-            ResponseEntity<String> response = restTemplate.getForEntity(healthUrl, String.class);
+            ResponseEntity<String> response = healthRestTemplate.getForEntity(healthUrl, String.class);
             return response.getStatusCode().is2xxSuccessful();
         } catch (Exception e) {
             return false;

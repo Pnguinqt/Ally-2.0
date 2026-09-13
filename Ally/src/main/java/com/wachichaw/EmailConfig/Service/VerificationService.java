@@ -16,8 +16,8 @@ public class VerificationService {
     
     public void sendVerificationEmail(String to, String userName, String token) {
 
-        System.out.print(to + token + userName);
-        String verificationPin = generateVerificationPin(); 
+
+
     
         String subject = "Verify Your Account";
         String body = 

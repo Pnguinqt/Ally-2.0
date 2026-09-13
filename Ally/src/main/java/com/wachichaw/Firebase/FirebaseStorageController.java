@@ -18,7 +18,6 @@ public class FirebaseStorageController {
         this.storageService = storageService;
     }
 
-    @CrossOrigin(origins = "http://localhost:3000") // Add this for CORS
     @PostMapping("/upload-profile-picture")
     public ResponseEntity<String> upload(
             @RequestParam("file") MultipartFile file,

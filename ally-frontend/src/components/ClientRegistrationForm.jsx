@@ -156,8 +156,11 @@ export default function ClientRegistrationForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (validateStep2()) {
       setIsSubmitting(true);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000);
       try {
         const body = new FormData();
         body.append("email", formData.email);
@@ -182,7 +185,8 @@ export default function ClientRegistrationForm() {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
         const response = await fetch(`${apiBaseUrl}/users/Client`, {
           method: "POST",
-          body: body
+          body: body,
+          signal: controller.signal
         });
 
         if (response.ok) {
@@ -196,11 +200,8 @@ export default function ClientRegistrationForm() {
         } else {
           // Try to get error message from backend
           const errorData = await response.json().catch(() => ({}));
-          if (
-            response.status === 409 ||
-            (errorData && errorData.message && errorData.message.toLowerCase().includes("email"))
-          ) {
-            toast.error("Email already exists.");
+          if (response.status === 409) {
+            toast.error(errorData.message || "Email already exists.");
             navigate('/signup');
           } else {
             toast.error(errorData.message || "Registration failed. Please try again.");
@@ -208,8 +209,11 @@ export default function ClientRegistrationForm() {
         }
       } catch (error) {
         console.error("Error submitting form:", error);
-        toast.error('Registration failed. Please try again.');
+        toast.error(error.name === 'AbortError'
+          ? 'The server took too long to respond. Please try again shortly.'
+          : 'Unable to reach the server. Please check your connection and try again.');
       } finally {
+        clearTimeout(timeout);
         setIsSubmitting(false);
       }
     }

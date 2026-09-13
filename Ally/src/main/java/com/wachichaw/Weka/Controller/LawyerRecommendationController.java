@@ -15,7 +15,6 @@ import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/lawyer-recommendation")
-@CrossOrigin(origins = "*")
 public class LawyerRecommendationController {
     
     @Autowired
