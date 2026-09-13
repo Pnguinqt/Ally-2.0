@@ -59,7 +59,8 @@ def prepare_vector_batch(chunks: List[Dict], model: SentenceTransformer) -> List
                 'chunk_type': chunk.get('chunk_type', 'unknown'),
                 'text': truncate_text(text, 8000),
                 'chunk_id': str(chunk_id),
-                'case_id': chunk.get('case_id', '')
+                'case_id': chunk.get('case_id', ''),
+                'source_url': chunk.get('source_url', '')
             }
             
             if 'metadata' in chunk:

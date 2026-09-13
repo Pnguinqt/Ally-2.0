@@ -4,12 +4,13 @@ import axios from 'axios';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const API_URL = `${API_BASE_URL}/api/chat/prompt`;
 
-export const sendConsultationMessage = async (message, useRAG = false) => {
+export const sendConsultationMessage = async (message, useRAG = false, conversationId, requestId, messages = []) => {
   try {
     const response = await axios.post(API_URL, 
       { 
         message,
-        useRAG
+        useRAG, conversationId, requestId,
+        previousMessages: messages.slice(-40).map(item => ({ role: item.sender === 'user' ? 'user' : 'assistant', content: item.text }))
       }, 
       {
         headers: {
@@ -37,9 +38,9 @@ export const sendConsultationMessage = async (message, useRAG = false) => {
   }
 };
 
-export const getConsultationHistory = async (limit = 50) => {
+export const getConsultationHistory = async (limit = 100, conversationId) => {
   const response = await axios.get(`${API_BASE_URL}/api/chat/history`, {
-    params: { limit },
+    params: { limit, conversationId },
     headers: authHeader()
   });
 
@@ -62,6 +63,8 @@ const parseResponseData = (data) => {
   // New ChatResponse format (your backend's format)
   if (data && typeof data === 'object' && data.response !== undefined) {
     return {
+      conversationId: data.conversationId,
+      requestId: data.requestId,
       response: data.response,
       relevantCases: data.relevantCases || null,
       caseCount: data.caseCount || 0,
@@ -90,7 +93,7 @@ const parseResponseData = (data) => {
     try {
       const parsed = JSON.parse(data);
       return parseResponseData(parsed);
-    } catch (e) {
+    } catch {
       return {
         response: data,
         relevantCases: null,

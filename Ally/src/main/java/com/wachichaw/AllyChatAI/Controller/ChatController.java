@@ -44,7 +44,46 @@ public class ChatController {
     public ResponseEntity<ChatResponse> chat(@RequestBody ChatRequest request, HttpServletRequest httpRequest) {
         ChatResponse chatResponse = new ChatResponse();
         chatResponse.setRagEnabled(request.isUseRAG());
+        try {
+            chatResponse.setConversationId(request.getConversationId() == null
+                ? java.util.UUID.randomUUID().toString() : java.util.UUID.fromString(request.getConversationId()).toString());
+            chatResponse.setRequestId(request.getRequestId() == null
+                ? java.util.UUID.randomUUID().toString() : java.util.UUID.fromString(request.getRequestId()).toString());
+        } catch (IllegalArgumentException invalidId) {
+            chatResponse.setResponse("Unable to open this conversation. Please start a new chat.");
+            return ResponseEntity.badRequest().body(chatResponse);
+        }
+        Integer conversationUserId = extractOptionalUserId(httpRequest);
+        if (httpRequest.getHeader("Authorization") != null && conversationUserId == null) {
+            chatResponse.setResponse("Your session has expired. Please sign in again to continue your saved conversation.");
+            return ResponseEntity.status(401).body(chatResponse);
+        }
+        var priorTurns = conversationUserId == null
+            ? java.util.List.<com.wachichaw.AllyChatAI.Entity.AiChatHistoryEntity>of()
+            : aiChatHistoryService.getConversation(conversationUserId, chatResponse.getConversationId());
         chatResponse.setTimestamp(LocalDateTime.now().toString());
+
+        // Anonymous chats carry bounded browser history; signed-in chats use owned database records.
+        if (conversationUserId == null && request.getPreviousMessages() != null) {
+            var guestTurns = new java.util.ArrayList<com.wachichaw.AllyChatAI.Entity.AiChatHistoryEntity>();
+            String previousUser = null;
+            int chars = 0;
+            var previous = request.getPreviousMessages();
+            for (var message : previous.subList(Math.max(0, previous.size() - 40), previous.size())) {
+                if (message == null || message.content() == null) continue;
+                chars += message.content().length();
+                if (chars > 80000) break;
+                if ("user".equals(message.role())) previousUser = message.content();
+                else if ("assistant".equals(message.role()) && previousUser != null) {
+                    var turn = new com.wachichaw.AllyChatAI.Entity.AiChatHistoryEntity();
+                    turn.setUserMessage(previousUser);
+                    turn.setAiResponse(message.content());
+                    guestTurns.add(turn);
+                    previousUser = null;
+                }
+            }
+            priorTurns = guestTurns;
+        }
 
         System.out.println("\n" + "=".repeat(60));
         System.out.println("📝 Received message: " + request.getMessage());
@@ -56,7 +95,7 @@ public class ChatController {
         // STAGE 1: Python DeepSeek Validation
         // ==========================================
         System.out.println("🔍 Stage 1: Running Python DeepSeek validation...");
-        ValidationResponse pythonValidation = ragService.validateQuestion(request.getMessage());
+        ValidationResponse pythonValidation = priorTurns.isEmpty() ? ragService.validateQuestion(request.getMessage()) : null;
         
         if (pythonValidation != null && pythonValidation.getIsValid() != null && !pythonValidation.getIsValid()) {
             System.out.println("❌ REJECTED by DeepSeek classifier (" + pythonValidation.getMethod() + ")");
@@ -113,7 +152,8 @@ public class ChatController {
         if (request.isUseRAG()) {
             System.out.println("🔍 RAG enabled - calling Python service...");
             
-            RagSearchResponse ragResults = ragService.searchRelevantCases(request.getMessage(), 3);
+            RagSearchResponse ragResults = ragService.searchRelevantCases(priorTurns.isEmpty() ? request.getMessage()
+                : priorTurns.get(priorTurns.size() - 1).getUserMessage() + "\nFollow-up: " + request.getMessage(), 3);
 
             String ragRejectionStage = ragResults != null ? ragResults.getRejectionStage() : null;
             boolean canAnswerWithoutRag = "no_results".equals(ragRejectionStage)
@@ -125,11 +165,16 @@ public class ChatController {
                 System.out.println("   Reason: " + ragResults.getRejectionReason());
                 System.out.println("=".repeat(60) + "\n");
                 
+                String rejectionReason = ragResults.getRejectionReason();
+                if (rejectionReason == null || rejectionReason.isBlank()
+                        || "null".equalsIgnoreCase(rejectionReason.trim())) {
+                    rejectionReason = "I couldn't generate an answer to your question this time.";
+                }
                 String rejectionMessage;
                 
                 switch (ragResults.getRejectionStage() != null ? ragResults.getRejectionStage() : "") {
                     case "deepseek_filter":
-                        rejectionMessage = "❌ " + ragResults.getRejectionReason() + "\n\n" +
+                        rejectionMessage = "❌ " + rejectionReason + "\n\n" +
                             "💡 I specialize in Philippine law. Please ask about:\n" +
                             "• Legal rights and obligations\n" +
                             "• Court cases and procedures\n" +
@@ -155,8 +200,8 @@ public class ChatController {
                         break;
                     
                     default:
-                        rejectionMessage = "❌ " + ragResults.getRejectionReason() + "\n\n" +
-                            "💡 Please rephrase with more legal context.";
+                        rejectionMessage = "❌ " + rejectionReason + "\n\n" +
+                            "💡 Please try again. You can also describe what happened and what help you need in your own words.";
                 }
                 
                 chatResponse.setResponse(rejectionMessage);
@@ -299,7 +344,7 @@ public class ChatController {
         }
         
         System.out.println("Sending to DeepSeek...");
-        String response = deepSeekChatService.sendMessage(enhancedPrompt);
+        String response = deepSeekChatService.sendMessage(enhancedPrompt, priorTurns);
         chatResponse.setResponse(response);
         System.out.println("Response generated (" + response.length() + " chars)");
         Integer userId = extractOptionalUserId(httpRequest);
@@ -313,16 +358,19 @@ public class ChatController {
     @GetMapping("/history")
     public ResponseEntity<?> getChatHistory(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestParam(defaultValue = "50") int limit) {
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(required = false) String conversationId) {
         try {
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 return ResponseEntity.status(401).body("Missing authorization token");
             }
 
             int userId = Integer.parseInt(jwtUtil.extractUserId(authHeader.substring(7)));
-            return ResponseEntity.ok(aiChatHistoryService.getRecentForUser(userId, limit));
+            return ResponseEntity.ok(conversationId == null
+                ? aiChatHistoryService.getRecentForUser(userId, limit)
+                : aiChatHistoryService.getConversation(userId, conversationId));
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Failed to load AI chat history: " + e.getMessage());
+            return ResponseEntity.status(401).body("Please sign in again to load your chat history.");
         }
     }
 
@@ -366,7 +414,9 @@ public class ChatController {
                 chatResponse.getResponse(),
                 chatResponse.isRagEnabled(),
                 chatResponse.getCaseCount(),
-                chatResponse.getConfidence()
+                chatResponse.getConfidence(),
+                chatResponse.getConversationId(), chatResponse.getRequestId(),
+                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(chatResponse)
             );
         } catch (Exception historyError) {
             historyError.printStackTrace();

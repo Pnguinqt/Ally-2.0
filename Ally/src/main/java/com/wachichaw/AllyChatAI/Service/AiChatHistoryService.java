@@ -18,9 +18,13 @@ public class AiChatHistoryService {
     }
 
     public AiChatHistoryEntity save(int userId, String userMessage, String aiResponse,
-                                    boolean ragEnabled, Integer caseCount, String confidence) {
+                                    boolean ragEnabled, Integer caseCount, String confidence,
+                                    String conversationId, String requestId, String responseMetadata) {
         AiChatHistoryEntity history = new AiChatHistoryEntity();
         history.setUserId(userId);
+        history.setConversationId(conversationId);
+        history.setRequestId(requestId);
+        history.setResponseMetadata(responseMetadata);
         history.setUserMessage(userMessage);
         history.setAiResponse(aiResponse);
         history.setRagEnabled(ragEnabled);
@@ -32,6 +36,10 @@ public class AiChatHistoryService {
     public List<AiChatHistoryEntity> getRecentForUser(int userId, int limit) {
         int boundedLimit = Math.max(1, Math.min(limit, 100));
         return aiChatHistoryRepo.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, boundedLimit));
+    }
+
+    public List<AiChatHistoryEntity> getConversation(int userId, String conversationId) {
+        return aiChatHistoryRepo.findByUserIdAndConversationIdOrderByHistoryIdAsc(userId, conversationId);
     }
 
     public boolean deleteForUser(int historyId, int userId) {
