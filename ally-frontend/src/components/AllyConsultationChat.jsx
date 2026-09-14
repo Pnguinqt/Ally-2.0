@@ -274,7 +274,7 @@ const AllyConsultationChat = () => {
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Ask any legal question here..."
-                className="flex-1 outline-none text-base bg-transparent"
+                className="min-w-0 flex-1 outline-none text-base bg-transparent"
                 disabled={isTyping || Boolean(pending)}
               />
               <button
@@ -336,15 +336,15 @@ const AllyConsultationChat = () => {
         </div>
       ) : (
         // ACTIVE CHAT STATE - After first message (clean, minimal design)
-        <div className="w-full min-h-[calc(100vh-64px)] flex flex-col">
+        <div className="flex h-[calc(100dvh-3rem)] min-h-0 w-full flex-col overflow-hidden">
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto px-4 py-8 max-w-4xl mx-auto w-full">
-            <div className="flex flex-col justify-end min-h-full space-y-6">
+          <div className="mx-auto min-h-0 w-full max-w-4xl flex-1 overflow-y-auto px-4 py-8">
+            <div className="flex min-h-full flex-col justify-end space-y-6">
               {messages.map((message) => (
-                <div key={message.id}>
+                <div key={message.id} className="min-w-0">
                   {/* Main Message */}
-                  <div className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-2xl px-5 py-3 rounded-3xl ${
+                  <div className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[min(42rem,85%)] break-words px-5 py-3 rounded-3xl [overflow-wrap:anywhere] ${
                       message.sender === 'user' 
                         ? 'bg-blue-600 text-white' 
                         : 'bg-gray-100 text-gray-800'
@@ -355,12 +355,12 @@ const AllyConsultationChat = () => {
 
                   {/* Display Relevant Cases if RAG was used */}
                   {message.sender === 'ai' && message.ragEnabled && (
-                    <div className="mt-3 ml-0">
+                    <div className="mt-3 ml-0 min-w-0">
                       {message.relevantCases && message.relevantCases.length > 0 ? (
                         // Show cases if found above threshold
-                        <div className="max-w-2xl p-4 bg-blue-50 rounded-2xl">
-                          <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-xs font-semibold text-blue-800 flex items-center gap-1">
+                        <div className="max-w-[min(42rem,85%)] overflow-hidden break-words p-4 bg-blue-50 rounded-2xl [overflow-wrap:anywhere]">
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <h4 className="text-xs font-semibold text-blue-800 flex items-center gap-1 min-w-0">
                               <Search className="w-3 h-3" />
                               Found {message.caseCount} Relevant Case{message.caseCount > 1 ? 's' : ''}
                             </h4>
@@ -372,7 +372,7 @@ const AllyConsultationChat = () => {
                           </div>
                           <div className="space-y-2">
                             {message.relevantCases.map((legalCase, idx) => (
-                              <div key={idx} className="p-3 bg-white rounded-xl">
+                              <div key={idx} className="min-w-0 p-3 bg-white rounded-xl">
                                 <p className="text-xs font-semibold text-gray-800">
                                   {idx + 1}. {legalCase.title}
                                 </p>
@@ -389,7 +389,7 @@ const AllyConsultationChat = () => {
                                     href={legalCase.source_url.trim()}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+                                    className="text-xs text-blue-600 hover:underline mt-2 inline-block break-all"
                                   >
                                     View Official Supreme Court Decision
                                   </a>
@@ -400,7 +400,7 @@ const AllyConsultationChat = () => {
                         </div>
                       ) : message.confidence === 'Low relevance' || message.caseCount === 0 ? (
                         // Show "no relevant cases" message
-                        <div className="max-w-2xl p-4 bg-red-50 rounded-2xl">
+                        <div className="max-w-[min(42rem,85%)] break-words p-4 bg-red-50 rounded-2xl [overflow-wrap:anywhere]">
                           <div className="flex items-center gap-2 mb-2">
                             <Search className="w-4 h-4 text-red-600" />
                             <h4 className="text-xs font-semibold text-red-800">
@@ -436,15 +436,15 @@ const AllyConsultationChat = () => {
           </div>
 
           {/* Input Area - Fixed at bottom */}
-          <div className="bg-white border-t border-gray-200">
+          <div className="shrink-0 bg-white border-t border-gray-200">
             <div className="max-w-4xl mx-auto px-4 py-4">
               {/* Controls Row: RAG Toggle and New Chat */}
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
                   <button
                     onClick={() => setUseRAG(!useRAG)}
                     disabled={!ragAvailable}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
+                    className={`flex max-w-full items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
                       useRAG 
                         ? 'bg-blue-600 text-white hover:bg-blue-700' 
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -452,7 +452,7 @@ const AllyConsultationChat = () => {
                     title={!ragAvailable ? 'RAG service unavailable' : 'Toggle case search'}
                   >
                     <Search className="w-4 h-4" />
-                    <span className="text-sm font-medium">
+                    <span className="truncate text-sm font-medium">
                       {useRAG ? 'Case Search: ON' : 'Search for Relevant Cases'}
                     </span>
                   </button>
@@ -460,20 +460,20 @@ const AllyConsultationChat = () => {
                   {/* New Chat Button - Visible to ALL users */}
                   <button
                     onClick={handleNewChat}
-                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
+                    className="flex max-w-full items-center space-x-2 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
                     title="Start a new conversation"
                   >
                     <MessageSquarePlus className="w-4 h-4" />
-                    <span className="text-sm font-medium">New Chat</span>
+                    <span className="truncate text-sm font-medium">New Chat</span>
                   </button>
 
                   <button
                     onClick={() => { loadHistory(); setShowHistory(true); }}
-                    className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
+                    className="flex max-w-full items-center space-x-2 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
                     title="Refresh AI chat history"
                   >
                     <History className="w-4 h-4" />
-                    <span className="text-sm font-medium">
+                    <span className="truncate text-sm font-medium">
                       {historyLoading ? 'Loading...' : `${history.length} Saved`}
                     </span>
                   </button>
@@ -492,7 +492,7 @@ const AllyConsultationChat = () => {
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Ask any legal question here..."
-                  className="flex-1 outline-none text-sm bg-transparent"
+                  className="min-w-0 flex-1 outline-none text-sm bg-transparent"
                   disabled={isTyping || Boolean(pending)}
                 />
                 <button
