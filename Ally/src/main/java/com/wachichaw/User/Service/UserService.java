@@ -150,7 +150,6 @@
                 }
             String token = String.valueOf((int)(Math.random() * 900000) + 100000);
             tempClientStorageService.saveUnverifiedUser(token, client);
-            tempClientStorageService.getUnverifiedUser(token);
             ClientEntity savedClient = client;
             try {
                 verificationService.sendVerificationEmail(savedClient.getEmail(), savedClient.getFname(), token);

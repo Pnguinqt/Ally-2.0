@@ -94,12 +94,10 @@ public class VerificationController {
     @PostMapping("/verifyClient")
     public ResponseEntity<?> verifyAccountClient(@RequestParam String token) throws AccessDeniedException {
 
-        System.out.println("Received token: " + token);
 
         ClientEntity client = tempClientStorageService.getUnverifiedUser(token);
 
         if (client == null) {
-            System.out.println("No user found for token: " + token);
             return ResponseEntity.badRequest()
                     .body(Map.of("success", false, "message", "Invalid verification code"));
         }
@@ -126,7 +124,6 @@ public class VerificationController {
     }
     @PostMapping("/verifyLawyer")
     public ResponseEntity<?> verifyAccountLawyer(@RequestParam String token) throws AccessDeniedException {
-        System.out.println("Received token: " + token);
         LawyerEntity lawyer = tempLawyerStorageService.getUnverifiedUser(token);
         
     

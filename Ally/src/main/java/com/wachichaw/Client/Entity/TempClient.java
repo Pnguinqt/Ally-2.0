@@ -17,7 +17,6 @@ public class TempClient{
 
     public ClientEntity getUnverifiedUser(String token) {
         ClientEntity user = unverifiedUsers.get(token);
-        System.out.println("Retrieved user: " + (user != null ? user.getEmail() : "null"));
         return user;
     }
     public String getTokenByEmail(String email) {
