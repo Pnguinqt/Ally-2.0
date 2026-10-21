@@ -94,8 +94,11 @@ public class ChatController {
         // ==========================================
         // STAGE 1: Python DeepSeek Validation
         // ==========================================
-        System.out.println("🔍 Stage 1: Running Python DeepSeek validation...");
-        ValidationResponse pythonValidation = priorTurns.isEmpty() ? ragService.validateQuestion(request.getMessage()) : null;
+        // /search classifies Case Search requests itself. Avoid a second model
+        // request for the same message, with extra latency and possibly a
+        // different classification. Non-RAG chat keeps its existing validation.
+        ValidationResponse pythonValidation = priorTurns.isEmpty() && !request.isUseRAG()
+            ? ragService.validateQuestion(request.getMessage()) : null;
         
         if (pythonValidation != null && pythonValidation.getIsValid() != null && !pythonValidation.getIsValid()) {
             System.out.println("❌ REJECTED by DeepSeek classifier (" + pythonValidation.getMethod() + ")");
@@ -113,7 +116,9 @@ public class ChatController {
             return ResponseEntity.badRequest().body(chatResponse);
         }
         
-        System.out.println("✅ PASSED DeepSeek validation (Stage 1)");
+        System.out.println(pythonValidation == null
+            ? "Intent validation deferred to the selected response path"
+            : "Passed intent validation");
         if (pythonValidation != null && pythonValidation.getConfidence() != null) {
             System.out.println("   Confidence: " + String.format("%.3f", pythonValidation.getConfidence()));
         }
@@ -166,15 +171,20 @@ public class ChatController {
             chatResponse.setCanStateFinalOutcome(ragResults.isCanStateFinalOutcome());
             chatResponse.setValidationWarning(ragResults.getValidationWarning());
             List<LegalCase> cases = ragResults.getCases() == null ? List.of()
-                : ragResults.getCases().stream().limit(3).toList();
+                : ragResults.getCases().stream()
+                    .filter(item -> item.isCanStateFinalOutcome() && "verified".equals(item.getLegalValidationStatus()))
+                    .limit(3).toList();
+            chatResponse.setCanStateFinalOutcome(!cases.isEmpty());
+            chatResponse.setLegalValidationStatus(cases.isEmpty() ? "unverified" : "verified");
+            chatResponse.setValidationWarning(null);
             chatResponse.setRelevantCases(cases);
             chatResponse.setCaseCount(cases.size());
             chatResponse.setConfidence(cases.isEmpty() ? null : String.format("%.1f%%", cases.get(0).getScore()));
             // Never generate an inferred outcome from retrieved excerpts.
             chatResponse.setResponse(Boolean.TRUE.equals(ragResults.getRejected())
                 ? ragResults.getRejectionReason()
-                : cases.isEmpty() ? "No relevant cases found. Try a more specific case title or case number."
-                : "Retrieved case text is shown below. Review the source decision before relying on a legal outcome.");
+                : cases.isEmpty() ? "No sufficiently relevant case was found in ALLY’s current verified collection. This does not mean that no applicable Supreme Court decision exists. Consider searching the official Supreme Court E-Library or consulting a qualified legal professional."
+                : "These verified cases are potentially relevant research material. Review why each relates to your question and its official decision. Similarity does not establish legal applicability or mean that a decision controls your situation.");
             saveHistoryIfAuthenticated(httpRequest, request.getMessage(), chatResponse);
             return ResponseEntity.ok(chatResponse);
 
@@ -296,26 +306,10 @@ public class ChatController {
             }
         }
         
-        if (lower.contains("ally") && 
-            (lower.contains("who") || lower.contains("what") || 
-             lower.contains("why") || lower.contains("how"))) {
-            return true;
-        }
-        
-        if (lower.matches("(?i).*(who|what).*(you|your|this bot|this assistant).*")) {
-            return true;
-        }
-        
-        if (lower.matches("(?i).*(your|the)\\s+(name|creator|developer|team|purpose|project).*")) {
-            return true;
-        }
-        
-        if (lower.contains("capstone") || lower.contains("thesis") || 
-            (lower.contains("school") && lower.contains("project"))) {
-            return true;
-        }
-        
-        return false;
+        // Match complete bot-introduction questions, not substrings such as
+        // "illegally" or legal scenarios mentioning "you" and "your employer".
+        return lower.matches("^(?:who are you|what is ally|who (?:created|developed) (?:you|ally)|"
+            + "what (?:is your name|can (?:you|ally) do)|what is (?:this bot|this assistant))\\s*[.!?]*$");
     }
 
     @GetMapping("/health")
