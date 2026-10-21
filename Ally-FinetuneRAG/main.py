@@ -11,7 +11,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_MODEL=deepseek-v4-flash
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 
 from pydantic import BaseModel, Field
@@ -19,6 +19,12 @@ from typing import List, Optional
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone
 import os
+import math
+import secrets
+import retrieval_ranking
+import retrieval_catalog
+import unicodedata
+from collections import Counter
 from dotenv import load_dotenv
 import re
 import requests
@@ -53,6 +59,7 @@ app.add_middleware(
 class SearchRequest(BaseModel):
     query: str
     top_k: int = Field(default=3, ge=1)
+    diagnostics: bool = False
 
 class ValidationRequest(BaseModel):
     query: str
@@ -103,7 +110,7 @@ def classify_with_deepseek(query: str) -> tuple[bool, str, str, float]:
         (is_valid, category, reason, confidence)
     """
     if not deepseek_api_key:
-        return True, "fallback", "DeepSeek API key not configured", 0.5
+        raise HTTPException(503, "Legal intent classification is temporarily unavailable.")
     
     prompt = f"""You are a classifier for a Philippine legal assistant chatbot named ALLY.
 
@@ -126,6 +133,14 @@ CATEGORIES:
 7. TECHNOLOGY - Programming, coding, tech troubleshooting (unless about cyber law)
 8. MEDICAL - Health symptoms, medical advice (unless about malpractice)
 9. OTHER - General knowledge, math, travel, shopping
+
+Accept ordinary-language legal situations, doctrine questions, descriptions of
+disputes, questions about laws/procedures, and exact case identities as LEGAL.
+No party name, docket, date, statutory citation, formal terminology, or phrase
+such as "find a case" is required. For example, a worker describing being fired
+without a chance to explain, or a tenant describing being locked out, is LEGAL.
+Clearly unrelated questions remain non-LEGAL. A LEGAL classification indicates
+only research intent; it does not assert that a matching case exists.
 
 RESPONSE FORMAT (respond ONLY with this):
 CATEGORY: [category name]
@@ -172,8 +187,12 @@ Your classification:"""
         confidence_match = re.search(r'CONFIDENCE:\s*([\d.]+)', text, re.IGNORECASE)
         reason_match = re.search(r'REASON:\s*(.+?)(?:\n|$)', text, re.IGNORECASE)
         
-        category = category_match.group(1).upper() if category_match else "OTHER"
-        confidence = float(confidence_match.group(1)) if confidence_match else 0.7
+        if not category_match or not confidence_match:
+            raise ValueError("Incomplete classification")
+        category = category_match.group(1).upper()
+        confidence = float(confidence_match.group(1))
+        if category not in {"LEGAL", "GREETING", "META", "COOKING", "WEATHER", "ENTERTAINMENT", "TECHNOLOGY", "MEDICAL", "OTHER"} or not 0 <= confidence <= 1:
+            raise ValueError("Invalid classification")
         reason = reason_match.group(1).strip() if reason_match else "Classification completed"
         
         # Determine if valid
@@ -181,10 +200,8 @@ Your classification:"""
         
         return is_valid, category, reason, confidence
         
-    except Exception as e:
-        print(f"   ⚠️  DeepSeek classification error: {e}")
-        # Fail open - allow through
-        return True, "error", str(e), 0.5
+    except Exception:
+        raise HTTPException(503, "Legal intent classification is temporarily unavailable.") from None
 
 
 # ==========================================
@@ -225,7 +242,7 @@ async def startup_event():
     if deepseek_api_key:
         print(f"   DeepSeek classifier configured: {deepseek_model}")
     else:
-        print("   DEEPSEEK_API_KEY not found; classifier will fail open")
+        print("   DEEPSEEK_API_KEY not found; classification will report unavailable")
     
     print("ALLY ready.")
     
@@ -355,21 +372,17 @@ async def validate_question(request: ValidationRequest):
             details={"category": category, "reason": reason}
         )
         
-    except Exception as e:
-        print(f"   ❌ Validation error: {str(e)}")
-        # Fail open on error
-        return ValidationResponse(
-            is_valid=True,
-            rejection_reason=None,
-            confidence=0.5,
-            method="error_fallback"
-        )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(503, "Legal intent classification is temporarily unavailable.") from None
 
 
 # ==========================================
 # SEARCH ENDPOINT
 # ==========================================
 VALIDATION_WARNING = "ALLY found potentially relevant case records, but the final Supreme Court disposition could not be verified from the currently indexed metadata. The retrieved text may include rulings from lower courts. Please review the official Supreme Court or E-Library decision before relying on the legal outcome."
+NO_RESULT_MESSAGE = "No sufficiently relevant case was found in ALLY’s current verified collection. This does not mean that no applicable Supreme Court decision exists. Consider searching the official Supreme Court E-Library or consulting a qualified legal professional."
 
 
 def clean(value):
@@ -380,21 +393,32 @@ def section_name(value):
     return re.sub(r"[\s-]+", "_", clean(value).lower())
 
 
+def metadata_true(value):
+    if isinstance(value, bool):
+        return value
+    return clean(value).lower() in {"true", "1", "yes"}
+
+
 def legally_verified(metadata):
     try:
         source = urlsplit(clean(metadata.get("source_url")))
         official = (source.scheme == "https" and source.hostname in
                     {"elibrary.judiciary.gov.ph", "sc.judiciary.gov.ph"}
-                    and not source.username and not source.password
+                    and source.username is None and source.password is None
                     and source.port in (None, 443))
     except ValueError:
         official = False
     court = section_name(metadata.get("court_level"))
-    disposition = clean(metadata.get("disposition"))
-    return bool(official and court in {"supreme_court", "supreme_court_of_the_philippines"}
+    disposition = clean(metadata.get("final_disposition")) or clean(metadata.get("disposition"))
+    identity = retrieval_ranking.identity_key(metadata)
+    return bool(identity and identity[0] == 'case' and clean(metadata.get('case_title'))
+                and official and court in {"supreme_court", "supreme_court_of_the_philippines"}
                 and disposition.lower() not in {"", "unknown", "n/a", "null", "none", "ambiguous"}
                 and "final_disposition" in {section_name(metadata.get("section")),
-                                             section_name(metadata.get("chunk_type"))})
+                                             section_name(metadata.get("chunk_type"))}
+                and metadata_true(metadata.get("disposition_verified"))
+                and metadata_true(metadata.get("source_verified"))
+                and section_name(metadata.get("verification_status")) == "verified")
 
 
 def retrieval_response(query, cases, confidence=0.0, **extra):
@@ -403,12 +427,82 @@ def retrieval_response(query, cases, confidence=0.0, **extra):
                 confidence=confidence,
                 legal_validation_status="verified" if verified else "unverified",
                 can_state_final_outcome=verified,
-                validation_warning=None if verified else VALIDATION_WARNING,
+                validation_warning=None if verified or not cases else VALIDATION_WARNING,
+                message=NO_RESULT_MESSAGE if not cases else "Potentially relevant verified research material. Similarity does not establish legal applicability.",
                 **extra)
+
+
+RERANK_FIELDS = (
+    "text", "case_title", "case_number", "disposition_summary",
+    "final_disposition", "section", "chunk_type",
+    "retrieval_text", "facts_summary", "legal_issues", "doctrines", "laws_cited", "keywords",
+)
+RERANK_STOPWORDS = frozenset("""
+    a an and are as at be because been being but by can could did do does for from had
+    has have how i if in into is it its may me my not of on or our shall should
+    so some than that the their them there these they this those to under up
+    us was we were what when where which who why will with would you your
+    about find give please retrieve show tell case cases court courts supreme
+    petition petitions petitioner petitioners respondent respondents accused
+    prosecution decision decisions ruling rulings philippines philippine people
+    versus vs v gr g r no nos number final disposition legal law
+    granted denied plaintiff plaintiffs similar
+""".split())
+
+
+def retrieval_tokens(text):
+    normalized = unicodedata.normalize("NFKC", clean(text)).casefold()
+    return {token for token in re.findall(r"[^\W_]+", normalized)
+            if token not in RERANK_STOPWORDS}
+
+
+def gr_numbers(text, allow_bare=False):
+    """Extract full G.R. identifiers, preserving the historical L- prefix.
+
+    Only case_number metadata may use a bare numeric identifier; unrelated
+    numbers in the query or decision text must not trigger an exact boost.
+    """
+    normalized = unicodedata.normalize("NFKC", clean(text)).upper()
+    pattern = (r"(?<!\w)G\s*\.?\s*R\s*\.?\s*[-:]?\s*"
+               r"(?:NOS?\.?\s*)?((?:L\s*[-–]?\s*)?\d+)(?!\w)")
+    identifiers = re.findall(pattern, normalized)
+    if allow_bare and re.fullmatch(r"(?:L\s*[-–]?\s*)?\d+", normalized):
+        identifiers.append(normalized)
+    return {re.sub(r"[^A-Z0-9]", "", identifier) for identifier in identifiers}
+
+
+def rerank_candidates(query, candidates):
+    """Semantic-first ranking; keyword and legal-concept contributions are bounded."""
+    return retrieval_ranking.rank(query, candidates, retrieval_tokens, RERANK_FIELDS, metadata_text)
+
+
+def metadata_text(value):
+    return " ".join(clean(v) for v in value) if isinstance(value, list) else clean(value)
+
+
+def relevant_candidates(query, candidates, cutoff):
+    matches, _ = retrieval_ranking.select(rerank_candidates(query, candidates), cutoff, limit=len(candidates))
+    return matches
 
 
 @app.post("/search")
 def search_cases(request: SearchRequest):
+    if request.diagnostics:
+        raise HTTPException(403, "Diagnostics are not available through this endpoint.")
+    return _search_cases(request)
+
+
+@app.post('/dev/retrieval-diagnostics', include_in_schema=False)
+def development_diagnostics(request: SearchRequest, x_ally_diagnostics_key: Optional[str] = Header(default=None)):
+    if os.getenv('ALLY_ENV') != 'development':
+        raise HTTPException(404, 'Not found')
+    configured = os.getenv('RAG_DIAGNOSTICS_TOKEN', '')
+    if len(configured) < 24 or not isinstance(x_ally_diagnostics_key, str) or not secrets.compare_digest(configured, x_ally_diagnostics_key):
+        raise HTTPException(403, 'Development diagnostics require authorization.')
+    return _search_cases(request.model_copy(update={'diagnostics':True}))
+
+
+def _search_cases(request: SearchRequest):
     if pinecone_index is None or embedding_model is None:
         raise HTTPException(503, "Case retrieval unavailable: RAG is not initialized.")
     is_valid, category, reason, confidence = classify_with_deepseek(request.query)
@@ -420,12 +514,30 @@ def search_cases(request: SearchRequest):
         vector = embedding_model.encode(request.query, normalize_embeddings=True).tolist()
         if len(vector) != 384:
             raise HTTPException(503, "Case retrieval unavailable: query dimension must be 384.")
-        options = dict(vector=vector, top_k=min(request.top_k, 3), include_metadata=True)
+        options = dict(vector=vector, top_k=100, include_metadata=True)
         namespace = os.getenv("PINECONE_NAMESPACE")
         if namespace:
             options["namespace"] = namespace
         results = pinecone_index.query(**options)
-        matches = [m for m in results.get("matches", []) if m["score"] >= 0.54][:min(request.top_k, 3)]
+        candidates = list(results.get("matches", []))[:100]
+        raw_candidates = list(candidates)
+        identities = retrieval_catalog.candidates(request.query, namespace or "")
+        if identities:
+            fetched = pinecone_index.fetch(ids=[r["id"] for r in identities], namespace=namespace or "")
+            fetched = fetched.to_dict() if hasattr(fetched, "to_dict") else fetched
+            known = {r["id"]: r for r in identities}
+            for identifier, row in fetched.get("vectors", {}).items():
+                md = row.get("metadata") or {}
+                if identifier not in known or retrieval_ranking.identity_key(md) != retrieval_ranking.identity_key(known[identifier]):
+                    continue
+                values = row.get("values", [])
+                if len(values) != 384:
+                    raise ValueError("Invalid fetched vector dimension")
+                score = sum(float(a)*float(b) for a,b in zip(vector, values))
+                candidates.append(dict(id=identifier, metadata=md, score=max(-1.,min(1.,score))))
+        cutoff = float(os.getenv("RAG_RERANK_CUTOFF", "0.52"))
+        matches, trace = retrieval_ranking.select(rerank_candidates(request.query, candidates),
+            cutoff=cutoff, semantic_floor=0.54, limit=min(request.top_k, 3), verified_check=legally_verified)
         cases = []
         for match in matches:
             metadata = match.get("metadata") or {}
@@ -434,15 +546,33 @@ def search_cases(request: SearchRequest):
                 title=clean(metadata.get("case_title")),
                 case_number=clean(metadata.get("case_number")),
                 decision_date=clean(metadata.get("decision_date")),
+                final_disposition=clean(metadata.get("final_disposition")) or clean(metadata.get("disposition")),
+                court_level=clean(metadata.get("court_level")),
+                source_provider=clean(metadata.get("source_provider")),
                 score=round(match["score"] * 100, 1),
-                content=clean(metadata.get("text")),
+                semantic_score=match["semantic_score"],
+                rerank_score=match["rerank_score"],
+                content=metadata.get("content") if isinstance(metadata.get("content"), str)
+                    else metadata.get("text") if isinstance(metadata.get("text"), str) else "",
                 citation=clean(metadata.get("case_number")),
                 section=section_name(metadata.get("section")) or section_name(metadata.get("chunk_type")),
                 source_url=clean(metadata.get("source_url")),
+                relevance_explanation=("The saved record discusses " + ", ".join(match['matched_concepts']) + ", which overlaps this research question. "
+                    if match['matched_concepts'] else "The case identity or saved text matches terms in this research question. ")
+                    + "Similarity does not establish legal applicability or mean that this decision controls your situation.",
                 legal_validation_status="verified" if verified else "unverified",
                 can_state_final_outcome=verified,
                 validation_warning=None if verified else VALIDATION_WARNING))
-        return retrieval_response(request.query, cases, max((m["score"] for m in matches), default=0.0))
+        extra = {}
+        if request.diagnostics:
+            extra["diagnostics"] = dict(
+                stage="retrieval", classification_accepted=True,
+                index=os.getenv("PINECONE_INDEX_NAME"), namespace=namespace or "",
+                model=os.getenv("EMBEDDING_MODEL"), dimension=len(vector),
+                semantic_cutoff=0.54, combined_cutoff=cutoff, candidate_pool=100,
+                raw_candidate_count=len(raw_candidates), identity_candidates_count=len(identities),
+                candidates=retrieval_ranking.safe_diagnostics(raw_candidates, trace))
+        return retrieval_response(request.query, cases, max((m["score"] for m in matches), default=0.0), **extra)
     except HTTPException:
         raise
     except Exception:
@@ -471,7 +601,11 @@ async def health_check():
             "vectors_count": stats.total_vector_count,
             "classifier": "DeepSeek V4 Flash",
             "classification_type": "LLM-based",
-            "relevance_threshold": "54%"
+            "relevance_threshold": "54%",
+            "rerank_cutoff": os.getenv("RAG_RERANK_CUTOFF", "0.52"),
+            "index": os.getenv("PINECONE_INDEX_NAME"),
+            "namespace": os.getenv("PINECONE_NAMESPACE", ""),
+            "embedding_dimension": 384
         }
     except Exception as e:
         return {

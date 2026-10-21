@@ -1,9 +1,12 @@
-import RetrievedCases from './RetrievedCases';
+import RetrievedCases, { SIMILARITY_NOTICE } from './RetrievedCases';
 import { historyMessages, mergeHistory } from '../services/consultationHistory';
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Search, MessageSquarePlus, History, RotateCcw, Trash2 } from 'lucide-react';
 import { sendConsultationMessage, checkRagHealth, getConsultationHistory, deleteConsultationHistory } from '../services/allyConsultationService';
 import MarkdownText from './shared/MarkdownText';
+
+const RETRIEVAL_NOTICE = "Retrieved case text is shown below. Review the source decision before relying on a legal outcome.";
+const VERIFIED_CASES_INTRO = "These verified cases are potentially relevant research material. Review why each relates to your question and its official decision. Similarity does not establish legal applicability or mean that a decision controls your situation.";
 
 const storageKey = () => `ally-conversation:${localStorage.getItem('userId') || 'guest'}`;
 const readSavedChat = () => {
@@ -347,7 +350,10 @@ const AllyConsultationChat = () => {
               {messages.map((message) => (
                 <div key={message.id} className="min-w-0">
                   {/* Main Message */}
-                  <div className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {!(message.sender === 'ai' && (
+                    message.text === RETRIEVAL_NOTICE ||
+                    (message.ragEnabled && message.text?.trim() === VERIFIED_CASES_INTRO)
+                  )) && <div className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[min(42rem,85%)] break-words px-5 py-3 rounded-3xl [overflow-wrap:anywhere] ${
                       message.sender === 'user' 
                         ? 'bg-blue-600 text-white' 
@@ -355,7 +361,7 @@ const AllyConsultationChat = () => {
                     }`}>
                       <MarkdownText text={message.text} className="text-sm leading-relaxed" />
                     </div>
-                  </div>
+                  </div>}
 
                   {message.sender === 'ai' && message.ragEnabled && <RetrievedCases message={message} />}
 
@@ -428,6 +434,9 @@ const AllyConsultationChat = () => {
               </div>
 
               {/* Input Row */}
+              <p className="mb-2 px-2 text-center text-xs font-semibold leading-relaxed text-gray-500">
+                {SIMILARITY_NOTICE}
+              </p>
               <div className="flex items-center gap-3 bg-white border border-gray-300 rounded-full px-4 py-2 shadow-sm">
                 <input
                   type="text"
@@ -447,10 +456,6 @@ const AllyConsultationChat = () => {
                 </button>
               </div>
 
-              {/* Disclaimer */}
-              <p className="mt-3 text-xs text-center text-gray-500">
-                AI-generated insights are not a substitute for professional legal advice and may be inaccurate. Always confirm details with a qualified lawyer.
-              </p>
             </div>
           </div>
         </div>
