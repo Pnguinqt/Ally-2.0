@@ -26,6 +26,8 @@ const AllyConsultationChat = () => {
   const [hasChatStarted, setHasChatStarted] = useState(Boolean(savedChat.messages?.length)); // Restore the active conversation
   const [useRAG, setUseRAG] = useState(savedChat.useRAG ?? true); // Persist case-search preference
   const [ragAvailable, setRagAvailable] = useState(true); // NEW: RAG service status
+  const [ragChecking, setRagChecking] = useState(false);
+  const [ragHealthVersion, setRagHealthVersion] = useState(0);
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const activeRequest = useRef(savedChat.pending?.requestId);
@@ -81,13 +83,32 @@ const AllyConsultationChat = () => {
     scrollToBottom();
   }, [messages]);
 
-  // NEW: Check RAG service health on mount
+  // Recover after a backend restart or temporary search-service outage.
   useEffect(() => {
+    let active = true;
+    let inFlight = false;
     const checkRAG = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      setRagChecking(true);
       const isHealthy = await checkRagHealth();
-      setRagAvailable(isHealthy);
+      if (active) {
+        setRagAvailable(isHealthy);
+        setRagChecking(false);
+      }
+      inFlight = false;
     };
     checkRAG();
+    const interval = window.setInterval(checkRAG, 30000);
+    window.addEventListener('focus', checkRAG);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', checkRAG);
+    };
+  }, [ragHealthVersion]);
+
+  useEffect(() => {
     loadHistory();
   }, []);
 
@@ -257,7 +278,14 @@ const AllyConsultationChat = () => {
           </h1>
           
           <div className="w-full max-w-2xl">
-            <div className="mb-3 flex items-center justify-end">
+            <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+              {!ragAvailable && (
+                <button type="button" onClick={() => setRagHealthVersion(value => value + 1)} disabled={ragChecking}
+                  className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50">
+                  <RotateCcw className={`w-4 h-4 ${ragChecking ? 'animate-spin' : ''}`} />
+                  {ragChecking ? 'Checking…' : 'Retry case search'}
+                </button>
+              )}
               <button
                 onClick={() => setUseRAG(!useRAG)}
                 disabled={!ragAvailable}
@@ -402,7 +430,7 @@ const AllyConsultationChat = () => {
                   >
                     <Search className="w-4 h-4" />
                     <span className="truncate text-sm font-medium">
-                      {useRAG ? 'Case Search: ON' : 'Search for Relevant Cases'}
+                      {ragAvailable ? (useRAG ? 'Case Search: ON' : 'Search for Relevant Cases') : 'Case Search Unavailable'}
                     </span>
                   </button>
                   
@@ -429,7 +457,11 @@ const AllyConsultationChat = () => {
                 </div>
                 
                 {!ragAvailable && (
-                  <span className="text-xs text-red-500">⚠️ Search unavailable</span>
+                  <button type="button" onClick={() => setRagHealthVersion(value => value + 1)} disabled={ragChecking}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline disabled:opacity-50">
+                    <RotateCcw className={`w-3 h-3 ${ragChecking ? 'animate-spin' : ''}`} />
+                    {ragChecking ? 'Checking…' : 'Retry case search'}
+                  </button>
                 )}
               </div>
 

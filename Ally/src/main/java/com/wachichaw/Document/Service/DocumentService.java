@@ -202,6 +202,39 @@ public class DocumentService {
     }
 
     /**
+     * Read the stored bytes for a document after the caller has retrieved it
+     * through the access-controlled path.
+     */
+    public byte[] readDocumentBytes(DocumentEntity document) throws IOException {
+        String filePath = document.getFilePath();
+        if (filePath == null || filePath.isBlank()) {
+            throw new IOException("The stored file path is missing.");
+        }
+
+        if (!useFirebaseStorage()) {
+            Path localPath = Paths.get(filePath).normalize();
+            if (!Files.exists(localPath) || !Files.isRegularFile(localPath)) {
+                throw new IOException("The stored file could not be found.");
+            }
+            return Files.readAllBytes(localPath);
+        }
+
+        int objectStart = filePath.indexOf("/o/");
+        int queryStart = filePath.indexOf("?alt=media");
+        if (objectStart < 0 || queryStart <= objectStart + 3) {
+            throw new IOException("The stored file URL is invalid.");
+        }
+
+        String encodedBlobName = filePath.substring(objectStart + 3, queryStart);
+        String blobName = java.net.URLDecoder.decode(encodedBlobName, StandardCharsets.UTF_8);
+        Blob blob = StorageClient.getInstance().bucket().get(blobName);
+        if (blob == null || !blob.exists()) {
+            throw new IOException("The stored file could not be found.");
+        }
+        return blob.getContent();
+    }
+
+    /**
      * Delete document with access control
      */
     public boolean deleteDocument(int documentId, int userId, String userRole) {

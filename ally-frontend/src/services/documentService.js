@@ -205,6 +205,35 @@ export const documentService = {
     }
   },
 
+  // Generate an on-demand AI summary for a document the user can access
+  summarizeDocument: async (documentId) => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/${documentId}/summary`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authData.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      let message = 'Could not summarize this document';
+      try {
+        const body = await response.json();
+        if (body?.message) message = body.message;
+      } catch {
+        // Keep the user-friendly fallback when the server returns plain text.
+      }
+      throw new Error(message);
+    }
+
+    return await response.json();
+  },
+
   // Get document details
   getDocumentDetails: async (documentId) => {
     try {

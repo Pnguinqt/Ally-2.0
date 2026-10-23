@@ -8,6 +8,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,9 @@ import com.wachichaw.Config.JwtUtil;
 import com.wachichaw.Document.Entity.DocumentEntity;
 import com.wachichaw.Document.Entity.DocumentDTO;
 import com.wachichaw.Document.Service.DocumentService;
+import com.wachichaw.Document.Service.DocumentSummaryService;
+import com.wachichaw.Document.Service.DocumentSummaryService.UnreadableDocumentException;
+import com.wachichaw.Document.Service.DocumentSummaryService.UnsupportedDocumentTypeException;
 import com.wachichaw.User.Repo.UserRepo;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -55,6 +59,8 @@ public class DocumentController {
     private JwtUtil jwtUtil;
     @Autowired
     private AuditLogService auditLogService;
+    @Autowired
+    private DocumentSummaryService documentSummaryService;
 
     @Value("${storage.type:local}")
     private String storageType;
@@ -320,6 +326,37 @@ public class DocumentController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body("Access denied: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Generate an on-demand AI summary after validating case access.
+     */
+    @PostMapping("/{documentId}/summary")
+    public ResponseEntity<?> summarizeDocument(
+            @PathVariable int documentId,
+            HttpServletRequest request) {
+        try {
+            String[] userInfo = extractUserFromRequest(request);
+            int userId = Integer.parseInt(userInfo[0]);
+            String userRole = userInfo[1];
+
+            var summary = documentSummaryService.summarize(documentId, userId, userRole);
+            auditLogService.log(userId, "SUMMARIZE_DOCUMENT", "DOCUMENT", "DOCUMENT",
+                String.valueOf(documentId), "Generated an AI summary for document #" + documentId, "SUCCESS");
+            return ResponseEntity.ok(summary);
+        } catch (UnsupportedDocumentTypeException exception) {
+            return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(Map.of("message", exception.getMessage()));
+        } catch (UnreadableDocumentException exception) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(Map.of("message", exception.getMessage()));
+        } catch (IllegalStateException exception) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("message", exception.getMessage()));
+        } catch (Exception exception) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Map.of("message", "You do not have permission to summarize this document."));
         }
     }
 

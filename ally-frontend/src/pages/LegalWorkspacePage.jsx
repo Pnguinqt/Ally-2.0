@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, History, Loader2, NotebookPen, Search, Send, Trash2, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { caseService } from '../services/caseService.jsx';
@@ -6,6 +6,8 @@ import { deleteConsultationHistory, getConsultationHistory, sendConsultationMess
 import { documentService } from '../services/documentService.js';
 import { getAuthData } from '../utils/auth.jsx';
 import CaseDocumentManager from '../components/CaseDocumentManager.jsx';
+import CaseHearingCalendar from '../components/CaseHearingCalendar.jsx';
+import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import MarkdownText from '../components/shared/MarkdownText.jsx';
 
 const LegalWorkspacePage = () => {
@@ -16,11 +18,15 @@ const LegalWorkspacePage = () => {
   const [aiHistory, setAiHistory] = useState([]);
   const [notes, setNotes] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [caseListTab, setCaseListTab] = useState('recent');
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiReply, setAiReply] = useState(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const aiRequestId = useRef(0);
 
   useEffect(() => {
     const auth = getAuthData();
@@ -33,9 +39,38 @@ const LegalWorkspacePage = () => {
   }, []);
 
   useEffect(() => {
-    if (authData) {
-      loadWorkspace();
-    }
+    if (!authData) return;
+    let active = true;
+    const load = async () => {
+      try {
+        setLoading(true);
+        const caseList = authData.accountType === 'LAWYER'
+          ? await caseService.getLawyerCases(authData.userId)
+          : await caseService.getClientCases(authData.userId);
+        if (!active) return;
+        const visibleCases = sortCasesByRecency((caseList || []).filter(item => item.status !== 'CANCELLED'));
+        const initialCases = visibleCases.filter(item => !isCompletedCase(item));
+        setCases(visibleCases);
+        setCaseListTab(initialCases.length > 0 ? 'recent' : 'completed');
+        setSelectedCaseId(initialCases[0]?.caseId || visibleCases[0]?.caseId || null);
+        const [counts, history] = await Promise.all([
+          Promise.all(visibleCases.map(async item => [item.caseId, await documentService.getDocumentCount(item.caseId)])),
+          authData.accountType !== 'ADMIN' ? getConsultationHistory(25) : Promise.resolve([]),
+        ]);
+        if (!active) return;
+        setDocumentCounts(Object.fromEntries(counts));
+        setAiHistory(history);
+      } catch (error) {
+        if (active) {
+          console.error('Error loading legal workspace:', error);
+          toast.error('Failed to load legal workspace');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => { active = false; };
   }, [authData]);
 
   useEffect(() => {
@@ -47,32 +82,32 @@ const LegalWorkspacePage = () => {
     setNotes(localStorage.getItem(getNotesKey(selectedCaseId, authData.userId)) || '');
   }, [selectedCaseId, authData]);
 
-  const loadWorkspace = async () => {
+  useEffect(() => {
+    aiRequestId.current += 1;
+    setAiPrompt('');
+    setAiReply(null);
+    setSelectedHistoryId(null);
+    setAiLoading(false);
+    return () => { aiRequestId.current += 1; };
+  }, [selectedCaseId]);
+
+  const refreshDocumentCount = async caseId => {
     try {
-      setLoading(true);
-      const caseList = authData.accountType === 'LAWYER'
-        ? await caseService.getLawyerCases(authData.userId)
-        : await caseService.getClientCases(authData.userId);
-
-      const visibleCases = (caseList || []).filter(caseItem => caseItem.status !== 'CANCELLED');
-      setCases(visibleCases);
-      setSelectedCaseId(current => current || visibleCases[0]?.caseId || null);
-
-      const counts = {};
-      await Promise.all(visibleCases.map(async (caseItem) => {
-        counts[caseItem.caseId] = await documentService.getDocumentCount(caseItem.caseId);
-      }));
-      setDocumentCounts(counts);
-
-      if (authData.accountType !== 'ADMIN') {
-        const history = await getConsultationHistory(25);
-        setAiHistory(history);
-      }
+      const count = await documentService.getDocumentCount(caseId);
+      setDocumentCounts(current => ({ ...current, [caseId]: count }));
     } catch (error) {
-      console.error('Error loading legal workspace:', error);
-      toast.error('Failed to load legal workspace');
+      console.error('Error refreshing document count:', error);
+    }
+  };
+
+  const refreshAiHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      setAiHistory(await getConsultationHistory(25));
+    } catch {
+      toast.error('Failed to refresh AI history');
     } finally {
-      setLoading(false);
+      setHistoryLoading(false);
     }
   };
 
@@ -81,16 +116,29 @@ const LegalWorkspacePage = () => {
     [cases, selectedCaseId]
   );
 
+  const recentCases = useMemo(() => cases.filter(caseItem => !isCompletedCase(caseItem)), [cases]);
+  const completedCases = useMemo(() => cases.filter(isCompletedCase), [cases]);
+  const casesForActiveList = caseListTab === 'completed' ? completedCases : recentCases;
+
   const filteredCases = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    if (!term) return cases;
+    if (!term) return casesForActiveList;
 
-    return cases.filter(caseItem =>
+    return casesForActiveList.filter(caseItem =>
       [caseItem.title, caseItem.caseType, caseItem.description, caseItem.status]
         .filter(Boolean)
         .some(value => String(value).toLowerCase().includes(term))
     );
-  }, [cases, searchTerm]);
+  }, [casesForActiveList, searchTerm]);
+
+  const changeCaseListTab = (nextTab) => {
+    const nextCases = nextTab === 'completed' ? completedCases : recentCases;
+    setCaseListTab(nextTab);
+    setSearchTerm('');
+    setSelectedCaseId(current => nextCases.some(item => item.caseId === Number(current))
+      ? current
+      : nextCases[0]?.caseId || null);
+  };
 
   const saveNotes = (value) => {
     setNotes(value);
@@ -102,20 +150,23 @@ const LegalWorkspacePage = () => {
     event.preventDefault();
     if (!aiPrompt.trim() || !selectedCase) return;
 
+    const requestId = ++aiRequestId.current;
     setAiLoading(true);
     try {
       const contextualPrompt = buildWorkspacePrompt(selectedCase, notes, aiPrompt);
       const response = await sendConsultationMessage(contextualPrompt, true);
+      if (requestId !== aiRequestId.current) return;
       setAiReply(response);
       setSelectedHistoryId(null);
       setAiPrompt('');
       const history = await getConsultationHistory(25);
       setAiHistory(history);
     } catch (error) {
+      if (requestId !== aiRequestId.current) return;
       console.error('Error asking workspace AI:', error);
       toast.error('Failed to ask AI from workspace');
     } finally {
-      setAiLoading(false);
+      if (requestId === aiRequestId.current) setAiLoading(false);
     }
   };
 
@@ -170,17 +221,38 @@ const LegalWorkspacePage = () => {
   }
 
   return (
-    <div className="px-4 py-8 mx-auto max-w-7xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Legal Workspace</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Work from one case hub: documents, notes, case context, and AI consultation history.
-        </p>
+    <div className="px-4 py-4 mx-auto max-w-7xl lg:flex lg:h-[calc(100dvh-var(--workspace-offset,4rem))] lg:min-h-0 lg:flex-col">
+      <div className="mb-4 shrink-0">
+        <h1 className="text-xl font-bold text-gray-900">Legal Workspace</h1>
+        <p className="mt-1 text-sm text-gray-500">Choose a case, then open the tool you need.</p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="bg-white border border-gray-200 rounded-lg">
+      <div className="mb-4 lg:hidden">
+        <CaseListTabs
+          activeTab={caseListTab}
+          onChange={changeCaseListTab}
+          recentCount={recentCases.length}
+          completedCount={completedCases.length}
+        />
+        <label htmlFor="workspace-case-select" className="block mb-1 text-sm font-medium text-gray-700">Current case</label>
+        <select id="workspace-case-select" value={selectedCaseId || ''} onChange={event => setSelectedCaseId(Number(event.target.value))}
+          disabled={casesForActiveList.length === 0} className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-md">
+          {casesForActiveList.length === 0 && <option value="">No {caseListTab} cases</option>}
+          {casesForActiveList.map(caseItem => <option key={caseItem.caseId} value={caseItem.caseId}>
+            #{caseItem.caseId} · {caseItem.title || 'Untitled case'} · {caseItem.status}
+          </option>)}
+        </select>
+      </div>
+
+      <div className="grid flex-1 min-h-0 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <aside aria-label="Cases" className="hidden min-h-0 flex-col overflow-hidden bg-white border border-gray-200 rounded-lg lg:flex">
           <div className="p-4 border-b border-gray-200">
+            <CaseListTabs
+              activeTab={caseListTab}
+              onChange={changeCaseListTab}
+              recentCount={recentCases.length}
+              completedCount={completedCases.length}
+            />
             <div className="relative">
               <Search className="absolute w-4 h-4 text-gray-400 -translate-y-1/2 left-3 top-1/2" />
               <input
@@ -192,15 +264,18 @@ const LegalWorkspacePage = () => {
             </div>
           </div>
 
-          <div className="max-h-[calc(100vh-250px)] overflow-y-auto p-2">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2">
             {filteredCases.length === 0 ? (
               <div className="px-3 py-10 text-sm text-center text-gray-500">
-                No cases available for this workspace.
+                {searchTerm.trim()
+                  ? `No matching ${caseListTab} cases.`
+                  : caseListTab === 'completed' ? 'No completed cases yet.' : 'No recent cases available.'}
               </div>
             ) : (
               filteredCases.map(caseItem => (
                 <button
                   key={caseItem.caseId}
+                  aria-pressed={selectedCaseId === caseItem.caseId}
                   onClick={() => setSelectedCaseId(caseItem.caseId)}
                   className={`w-full p-3 text-left rounded-md border mb-2 transition-colors ${
                     selectedCaseId === caseItem.caseId
@@ -226,8 +301,7 @@ const LegalWorkspacePage = () => {
             )}
           </div>
         </aside>
-
-        <section className="space-y-5">
+        <section aria-label="Selected case workspace" className="flex flex-col min-w-0 min-h-0">
           {!selectedCase ? (
             <div className="p-10 text-center bg-white border border-gray-200 rounded-lg">
               <BriefcaseBusiness className="w-10 h-10 mx-auto text-gray-400" />
@@ -235,182 +309,162 @@ const LegalWorkspacePage = () => {
               <p className="mt-1 text-sm text-gray-500">Your workspace appears once a case is selected.</p>
             </div>
           ) : (
-            <>
-              <div className="p-5 bg-white border border-gray-200 rounded-lg">
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 text-sm text-blue-600">
-                      <BriefcaseBusiness className="w-4 h-4" />
-                      Case #{selectedCase.caseId}
-                    </div>
-                    <h2 className="mt-2 text-xl font-bold text-gray-900">{selectedCase.title}</h2>
-                    <p className="mt-2 text-sm leading-6 text-gray-600">{selectedCase.description || 'No description provided.'}</p>
+            <div key={selectedCase.caseId} className="flex flex-col min-h-0 lg:flex-1">
+              <div className="sticky top-[var(--workspace-offset,4rem)] z-20 bg-white border border-gray-200 rounded-t-lg shadow-sm shrink-0 lg:static">
+                <div className="flex items-start justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-blue-600">Case #{selectedCase.caseId} · {selectedCase.caseType || 'General'}</p>
+                    <h2 title={selectedCase.title} className="mt-1 text-lg font-bold text-gray-900 line-clamp-2">{selectedCase.title || 'Untitled case'}</h2>
+                    <p className="mt-1 text-xs text-gray-500">{participant.label}: {participant.name || 'N/A'}</p>
                   </div>
-                  <span className={`self-start px-3 py-1 text-xs font-semibold rounded-full ${statusClass(selectedCase.status)}`}>
-                    {selectedCase.status}
-                  </span>
+                  <span className={`shrink-0 px-2 py-1 text-xs font-semibold rounded-full ${statusClass(selectedCase.status)}`}>{selectedCase.status}</span>
                 </div>
-
-                <div className="grid gap-3 mt-5 sm:grid-cols-2 lg:grid-cols-4">
-                  <InfoTile icon={Calendar} label="Submitted" value={formatDate(selectedCase.dateSubmitted)} />
-                  <InfoTile icon={BriefcaseBusiness} label="Type" value={selectedCase.caseType || 'General'} />
-                  <InfoTile icon={UserRound} label={participant.label} value={participant.name} />
-                  <InfoTile icon={FileText} label="Documents" value={`${documentCounts[selectedCase.caseId] || 0}`} />
-                </div>
-
-                <div className="pt-5 mt-5 border-t border-gray-100">
-                  <div className="flex flex-col gap-1 mb-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h3 className="text-base font-semibold text-gray-900">Case Timeline</h3>
-                      <p className="text-sm text-gray-500">Track the main workspace milestones for this case.</p>
-                    </div>
-                    <span className="text-xs font-medium text-gray-500">
-                      Last updated {formatDateTime(selectedCase.updatedAt || selectedCase.dateSubmitted)}
-                    </span>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {caseTimeline.map((item, index) => (
-                      <TimelineStep
-                        key={item.label}
-                        item={item}
-                        isLast={index === caseTimeline.length - 1}
-                      />
-                    ))}
-                  </div>
-                </div>
+                <WorkspaceTabs activeTab={activeTab} onChange={setActiveTab} documentCount={documentCounts[selectedCase.caseId] || 0} />
               </div>
 
-              <div className="p-4 bg-white border border-blue-100 rounded-lg shadow-sm">
-                <div className="flex items-center gap-2 mb-3">
-                  <Bot className="w-5 h-5 text-blue-600" />
-                  <h3 className="text-base font-semibold text-gray-900">Ask AI About This Case</h3>
-                </div>
-                <form onSubmit={askWorkspaceAi} className="flex flex-col gap-3 md:flex-row">
-                  <input
-                    value={aiPrompt}
-                    onChange={(event) => setAiPrompt(event.target.value)}
-                    placeholder="Ask about next steps, legal issues, documents needed, or case strategy..."
-                    className="flex-1 px-4 py-3 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    disabled={aiLoading}
-                  />
-                  <button
-                    type="submit"
-                    disabled={!aiPrompt.trim() || aiLoading}
-                    className="inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                    Ask
-                  </button>
-                </form>
+              <div className="flex flex-col flex-1 min-h-0 border border-t-0 border-gray-200 rounded-b-lg bg-gray-50">
+                <WorkspacePanel id="overview" activeTab={activeTab}>
+                  <div className="p-5 bg-white">
+                    <h3 className="text-base font-semibold text-gray-900">Case Overview</h3>
+                    <p className="mt-2 text-sm leading-6 text-gray-600 whitespace-pre-wrap break-words">{selectedCase.description || 'No description provided.'}</p>
 
-                {aiReply?.response && (
-                  <div className="p-4 mt-4 border border-blue-100 rounded-lg bg-blue-50">
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <p className="text-sm font-semibold text-blue-900">
-                        {selectedHistoryId ? 'Restored AI Chat' : 'AI Response'}
-                      </p>
-                      {aiReply.confidence && (
-                        <span className="text-xs font-medium text-blue-700">{aiReply.confidence}</span>
-                      )}
+                    <div className="grid gap-3 mt-5 sm:grid-cols-2 lg:grid-cols-4">
+                      <InfoTile icon={Calendar} label="Submitted" value={formatDate(selectedCase.dateSubmitted)} />
+                      <InfoTile icon={BriefcaseBusiness} label="Type" value={selectedCase.caseType || 'General'} />
+                      <InfoTile icon={UserRound} label={participant.label} value={participant.name} />
+                      <InfoTile icon={FileText} label="Documents" value={`${documentCounts[selectedCase.caseId] || 0}`} />
                     </div>
-                    {selectedHistoryId && aiPrompt && (
-                      <div className="p-3 mb-3 text-sm bg-white border border-blue-100 rounded-md">
-                        <p className="text-xs font-semibold text-gray-500">Question</p>
-                        <p className="mt-1 text-gray-800">{aiPrompt}</p>
+
+                    <div className="pt-5 mt-5 border-t border-gray-100">
+                      <div className="flex flex-col gap-1 mb-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="text-base font-semibold text-gray-900">Case Timeline</h3>
+                          <p className="text-sm text-gray-500">Track the main workspace milestones for this case.</p>
+                        </div>
+                        <span className="text-xs font-medium text-gray-500">
+                          Last updated {formatDateTime(selectedCase.updatedAt || selectedCase.dateSubmitted)}
+                        </span>
                       </div>
+
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {caseTimeline.map((item, index) => (
+                          <TimelineStep
+                            key={item.label}
+                            item={item}
+                            isLast={index === caseTimeline.length - 1}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </WorkspacePanel>
+
+                <WorkspacePanel id="hearings" activeTab={activeTab}>
+                  <CaseHearingCalendar caseInfo={selectedCase} authData={authData} />
+                </WorkspacePanel>
+
+                <WorkspacePanel id="documents" activeTab={activeTab}>
+                  <div className="p-5 bg-white">
+                    <div className="flex items-center gap-2 mb-4">
+                      <FileText className="w-5 h-5 text-blue-600" />
+                      <h3 className="text-lg font-semibold text-gray-900">Case Documents</h3>
+                    </div>
+                    {selectedCase.status === 'ACCEPTED' ? (
+                      <CaseDocumentManager caseId={selectedCase.caseId} caseInfo={selectedCase} userRole={authData.accountType}
+                        authData={authData} onDocumentsChange={() => refreshDocumentCount(selectedCase.caseId)} />
+                    ) : (
+                      <p className="p-6 text-sm text-gray-600 border border-gray-200 rounded-md bg-gray-50">Document access opens once the case is accepted.</p>
                     )}
-                    <div className="text-sm leading-6 text-gray-700">
-                      <MarkdownText text={aiReply.response} />
-                    </div>
                   </div>
-                )}
-              </div>
+                </WorkspacePanel>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-                <div className="p-5 bg-white border border-gray-200 rounded-lg">
-                  <div className="flex items-center gap-2 mb-4">
-                    <FileText className="w-5 h-5 text-blue-600" />
-                    <h3 className="text-lg font-semibold text-gray-900">Case Documents</h3>
-                  </div>
-                  {selectedCase.status === 'ACCEPTED' ? (
-                    <CaseDocumentManager
-                      caseId={selectedCase.caseId}
-                      caseInfo={selectedCase}
-                      userRole={authData.accountType}
-                      authData={authData}
-                      onDocumentsChange={loadWorkspace}
-                    />
-                  ) : (
-                    <div className="p-6 text-sm text-gray-600 border border-gray-200 rounded-md bg-gray-50">
-                      Document access opens once the case is accepted.
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-5">
-                  <div className="p-5 bg-white border border-gray-200 rounded-lg">
+                <WorkspacePanel id="notes" activeTab={activeTab}>
+                  <div className="flex min-h-[320px] flex-col p-5 bg-white lg:h-full">
                     <div className="flex items-center gap-2 mb-3">
                       <NotebookPen className="w-5 h-5 text-blue-600" />
                       <h3 className="text-lg font-semibold text-gray-900">Workspace Notes</h3>
                     </div>
-                    <textarea
-                      value={notes}
-                      onChange={(event) => saveNotes(event.target.value)}
-                      placeholder="Add private notes, next steps, questions, or reminders for this case..."
-                      className="w-full h-48 p-3 text-sm border border-gray-300 rounded-md resize-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-                    <p className="mt-2 text-xs text-gray-500">Notes are saved on this browser for this case.</p>
+                    <label htmlFor="workspace-notes" className="mb-3 text-sm text-gray-500">Keep your private next steps, questions, and reminders for this case.</label>
+                    <textarea id="workspace-notes" value={notes} onChange={event => saveNotes(event.target.value)}
+                      placeholder="Add your notes here…"
+                      className="flex-1 min-h-[220px] w-full p-3 text-sm border border-gray-300 rounded-md resize-y focus:border-blue-500 focus:ring-2 focus:ring-blue-100 lg:resize-none" />
+                    <p className="mt-3 text-xs text-gray-500">Saved automatically in this browser for this case.</p>
                   </div>
+                </WorkspacePanel>
 
-                  <div className="p-5 bg-white border border-gray-200 rounded-lg">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <History className="w-5 h-5 text-blue-600" />
-                        <h3 className="text-lg font-semibold text-gray-900">AI History</h3>
+                <WorkspacePanel id="ai" activeTab={activeTab}>
+                  <div className="grid items-start gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_260px]">
+                    <div className="min-w-0 p-4 bg-white border border-blue-100 rounded-lg shadow-sm">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Bot className="w-5 h-5 text-blue-600" />
+                        <h3 className="text-base font-semibold text-gray-900">Ask AI About This Case</h3>
                       </div>
-                      <button onClick={loadWorkspace} className="text-xs font-medium text-blue-600 hover:text-blue-700">
-                        Refresh
-                      </button>
-                    </div>
-                    <div className="space-y-3 max-h-[420px] overflow-y-auto">
-                      {aiHistory.length === 0 ? (
-                        <p className="text-sm text-gray-500">No saved AI consultations yet.</p>
-                      ) : (
-                        aiHistory.slice(0, 8).map(item => (
-                          <div
-                            key={item.historyId}
-                            onClick={() => openHistoryInChat(item)}
-                            className={`w-full p-3 text-left border rounded-md transition-colors cursor-pointer ${
-                              selectedHistoryId === item.historyId
-                                ? 'border-blue-400 bg-blue-50'
-                                : 'border-gray-200 hover:bg-gray-50'
-                            }`}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-xs text-gray-500">{formatDateTime(item.createdAt)}</p>
-                                <p className="mt-1 text-sm font-semibold text-gray-900 line-clamp-2">{item.userMessage}</p>
-                                <div className="mt-2 text-sm text-gray-600 line-clamp-4">
-                                  <MarkdownText text={item.aiResponse} />
-                                </div>
-                              </div>
-                              <button
-                                onClick={(event) => deleteHistoryItem(item, event)}
-                                className="p-2 text-gray-400 rounded-md shrink-0 hover:text-red-600 hover:bg-red-50"
-                                title="Delete AI chat"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
+                      <form onSubmit={askWorkspaceAi} className="flex flex-col gap-3 md:flex-row">
+                        <input
+                          value={aiPrompt}
+                          onChange={(event) => setAiPrompt(event.target.value)}
+                          aria-label="Question for the AI assistant"
+                          placeholder="Ask about next steps, legal issues, or documents..."
+                          className="flex-1 px-4 py-3 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          disabled={aiLoading}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!aiPrompt.trim() || aiLoading}
+                          className="inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        >
+                          {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          Ask
+                        </button>
+                      </form>
+
+                      {aiReply?.response && (
+                        <div className="p-4 mt-4 border border-blue-100 rounded-lg bg-blue-50">
+                          <div className="flex items-center justify-between gap-3 mb-2">
+                            <p className="text-sm font-semibold text-blue-900">
+                              {selectedHistoryId ? 'Restored AI Chat' : 'AI Response'}
+                            </p>
+                            {aiReply.confidence && (
+                              <span className="text-xs font-medium text-blue-700">{aiReply.confidence}</span>
+                            )}
                           </div>
-                        ))
+                          {selectedHistoryId && aiPrompt && (
+                            <div className="p-3 mb-3 text-sm bg-white border border-blue-100 rounded-md">
+                              <p className="text-xs font-semibold text-gray-500">Question</p>
+                              <p className="mt-1 text-gray-800">{aiPrompt}</p>
+                            </div>
+                          )}
+                          <div className="max-h-[45dvh] overflow-y-auto overscroll-contain text-sm leading-6 text-gray-700">
+                            <MarkdownText text={aiReply.response} />
+                          </div>
+                        </div>
                       )}
                     </div>
+                    <aside aria-label="AI consultation history" className="min-w-0 p-4 bg-white border border-gray-200 rounded-lg">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900"><History className="w-4 h-4 text-blue-600" />AI History</h3>
+                        <button type="button" disabled={historyLoading} onClick={refreshAiHistory}
+                          className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50">{historyLoading ? 'Refreshing…' : 'Refresh'}</button>
+                      </div>
+                      <div className="space-y-2 max-h-[45dvh] overflow-y-auto overscroll-contain">
+                        {aiHistory.length === 0 ? <p className="text-sm text-gray-500">No saved AI consultations yet.</p> : aiHistory.map(item => (
+                          <div key={item.historyId} className={`flex items-start gap-1 rounded-md border p-2 ${selectedHistoryId === item.historyId ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+                            <button type="button" onClick={() => openHistoryInChat(item)} className="flex-1 min-w-0 text-left rounded-sm focus-visible:outline-blue-500">
+                              <p className="text-xs text-gray-500">{formatDateTime(item.createdAt)}</p>
+                              <p className="mt-1 text-sm font-medium text-gray-900 line-clamp-2">{item.userMessage}</p>
+                              <p className="mt-1 text-xs text-gray-500 line-clamp-2">{item.aiResponse}</p>
+                            </button>
+                            <button type="button" onClick={event => deleteHistoryItem(item, event)} className="p-2 text-gray-400 rounded-md shrink-0 hover:text-red-600 hover:bg-red-50" aria-label="Delete AI chat">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </aside>
                   </div>
-                </div>
+                </WorkspacePanel>
               </div>
-            </>
+            </div>
           )}
         </section>
       </div>
@@ -418,15 +472,25 @@ const LegalWorkspacePage = () => {
   );
 };
 
-const InfoTile = ({ icon: Icon, label, value }) => (
-  <div className="p-3 border border-gray-200 rounded-md bg-gray-50">
-    <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
-      <Icon className="w-4 h-4" />
-      {label}
-    </div>
-    <p className="mt-2 text-sm font-semibold text-gray-900 truncate">{value || 'N/A'}</p>
-  </div>
+const WorkspacePanel = ({ id, activeTab, children }) => (
+  <section id={`workspace-panel-${id}`} role="tabpanel" aria-labelledby={`workspace-tab-${id}`} hidden={activeTab !== id}
+    tabIndex={0} className="flex-1 min-h-0 overflow-y-auto overscroll-contain rounded-b-lg focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500">
+    {children}
+  </section>
 );
+
+const InfoTile = (props) => {
+  const { icon: Icon, label, value } = props;
+  return (
+    <div className="p-3 border border-gray-200 rounded-md bg-gray-50">
+      <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
+        <Icon className="w-4 h-4" />
+        {label}
+      </div>
+      <p className="mt-2 text-sm font-semibold text-gray-900 truncate">{value || 'N/A'}</p>
+    </div>
+  );
+};
 
 const TimelineStep = ({ item, isLast }) => {
   const stateStyles = {
@@ -479,6 +543,47 @@ const TimelineStep = ({ item, isLast }) => {
     </div>
   );
 };
+
+const CaseListTabs = ({ activeTab, onChange, recentCount, completedCount }) => {
+  const tabs = [
+    { id: 'recent', label: 'Recent', count: recentCount },
+    { id: 'completed', label: 'Completed', count: completedCount }
+  ];
+
+  return (
+    <div role="tablist" aria-label="Filter cases" className="grid grid-cols-2 gap-1 p-1 mb-3 bg-gray-100 rounded-lg">
+      {tabs.map(tab => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          onClick={() => onChange(tab.id)}
+          className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
+            activeTab === tab.id
+              ? 'bg-white text-blue-700 shadow-sm'
+              : 'text-gray-600 hover:bg-white/70 hover:text-gray-900'
+          }`}
+        >
+          <span>{tab.label}</span>
+          <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-[11px] leading-4 ${
+            activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
+          }`}>
+            {tab.count}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const isCompletedCase = caseItem => String(caseItem?.status || '').toUpperCase() === 'COMPLETED';
+
+const sortCasesByRecency = caseItems => [...caseItems].sort((first, second) => {
+  const firstTimestamp = Date.parse(first.updatedAt || first.dateSubmitted || '') || 0;
+  const secondTimestamp = Date.parse(second.updatedAt || second.dateSubmitted || '') || 0;
+  return secondTimestamp - firstTimestamp || Number(second.caseId || 0) - Number(first.caseId || 0);
+});
 
 const getNotesKey = (caseId, userId) => `ally.workspace.notes.${userId}.${caseId}`;
 
