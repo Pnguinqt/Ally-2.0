@@ -18,9 +18,10 @@ The current prototype includes a Spring Boot backend, a React/Vite frontend, and
 * **AI-powered legal assistant with RAG**: Answers Philippine legal questions using DeepSeek and retrieved Supreme Court case context from Pinecone.
 * **2020-2026 Supreme Court case dataset**: The RAG dataset includes processed Philippine Supreme Court case CSVs, including 2025 and 2026 case data.
 * **AI chat history**: Authenticated AI conversations are stored and can be reopened from the consultation page and legal workspace.
-* **Legal workspace**: A case-centered workspace that brings together case details, documents, notes, AI chat, and AI history.
+* **Legal workspace**: A case-centered workspace with Overview, Hearings, Documents, Notes, and AI Assistant tabs, a persistent case header, scrollable content panels, and a mobile case selector. Hearing bookings open in a side panel.
+* **Shared hearing calendar**: Clients and their assigned lawyers can view case hearings in the workspace. Only the assigned lawyer can book hearings for accepted cases, including a date, time, court/location, and preparation notes. Hearings use Philippine time and retain past hearing history.
 * **Case management**: Clients can submit cases, lawyers can accept or decline cases, and users can track case status.
-* **Document management**: Users can upload, view, download, and delete documents for accepted cases.
+* **Document management**: Users can upload, view, download, delete, and generate on-demand AI summaries for PDF, DOC, DOCX, TXT, and MD documents in accepted cases. Summary access follows the same case-participant permissions as document downloads.
 * **Audit trail**: Admins and lawyers can review logged activity such as login events, case changes, document actions, and AI inquiries.
 * **Email verification and notifications**: Brevo is used for account verification and email workflows.
 * **OAuth support**: Google OAuth login is supported when OAuth environment variables are configured.
@@ -70,9 +71,12 @@ DB_PASSWORD=123456
 
 DEEPSEEK_API_KEY=your_deepseek_api_key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_MODEL=deepseek-flash
+DOCUMENT_SUMMARY_MAX_CHARACTERS=60000
 
 RAG_SERVICE_URL=http://localhost:8001
+RAG_ENABLED=true
+RAG_HEALTH_TIMEOUT=10000
 
 STORAGE_TYPE=local
 BREVO_API_KEY=your_brevo_api_key
@@ -112,7 +116,7 @@ PINECONE_API_KEY=your_pinecone_api_key
 PINECONE_INDEX_NAME=ally-supreme-court-cases
 DEEPSEEK_API_KEY=your_deepseek_api_key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_MODEL=deepseek-flash
 HF_TOKEN=your_huggingface_token_optional
 ```
 
@@ -203,6 +207,8 @@ The processed RAG file is what gets embedded and uploaded to Pinecone. If the AI
 * RAG is enabled in the frontend.
 * The RAG service is running on port `8001`.
 * `RAG_SERVICE_URL` in `Ally/.env` points to `http://localhost:8001`.
+* `RAG_ENABLED=true` is saved in `Ally/.env`, and the backend has been restarted after changing it.
+* `RAG_HEALTH_TIMEOUT=10000` allows the Python service time to check Pinecone connectivity.
 * The latest processed chunks have been uploaded to Pinecone.
 
 ---
@@ -233,7 +239,7 @@ The Spring Boot backend handles users, cases, documents, audit logs, AI chat his
 * **RAG service**: Python, FastAPI, sentence-transformers
 * **Application database**: MySQL
 * **Vector database**: Pinecone
-* **AI model**: DeepSeek V4 Flash-compatible chat endpoint
+* **AI model**: DeepSeek Flash-compatible chat endpoint
 * **Embeddings**: [BAAI/bge-large-en-v1.5](https://huggingface.co/BAAI/bge-large-en-v1.5)
 * **Email**: Brevo
 * **File storage**: Local development storage or Firebase Storage
@@ -264,6 +270,8 @@ POST /users/login
 GET  /Cases/client/{clientId}
 GET  /Cases/lawyer/{lawyerId}
 GET  /api/documents/case/{caseId}
+GET  /api/cases/{caseId}/hearings
+POST /api/cases/{caseId}/hearings
 POST /api/chat/prompt
 GET  /api/chat/history
 GET  /api/chat/health

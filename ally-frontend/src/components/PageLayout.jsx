@@ -27,6 +27,9 @@ const PageLayout = ({ children }) => {
     return result;
   };
 
+  const showWarning = shouldShowWarning();
+  const isWorkspace = location.pathname === '/workspace';
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Conditional Sidebar - Only show when logged in */}
@@ -42,7 +45,7 @@ const PageLayout = ({ children }) => {
         <NavigationBar />
         
         {/* Lawyer Approval Warning - positioned below fixed nav bar */}
-        {shouldShowWarning() && (
+        {showWarning && (
           <div className={`fixed top-16 z-30 transition-all duration-300 ${
             isLoggedIn 
               ? `md:${isExpanded ? 'left-[240px]' : 'left-[60px]'} left-0 right-0` 
@@ -53,7 +56,8 @@ const PageLayout = ({ children }) => {
         )}
         
         {/* Main Content - adjust padding if warning is shown */}
-        <main className={shouldShowWarning() ? "pt-28" : "pt-12"}>
+        <main className={showWarning ? "pt-28" : isWorkspace ? "pt-16" : "pt-12"}
+          style={isWorkspace ? { '--workspace-offset': showWarning ? '7rem' : '4rem' } : undefined}>
           {children}
         </main>
       </div>

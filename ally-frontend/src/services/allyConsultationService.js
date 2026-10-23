@@ -120,7 +120,7 @@ const parseResponseData = (data) => {
 // Check RAG service health
 export const checkRagHealth = async () => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/chat/health`);
+    const response = await axios.get(`${API_BASE_URL}/api/chat/health`, { timeout: 15000 });
     return response.data.ragService === 'running';
   } catch (error) {
     console.error('Error checking RAG health:', error);

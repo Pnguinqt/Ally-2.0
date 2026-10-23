@@ -115,6 +115,23 @@
             <version>3.6.1</version>
         </dependency>
 
+        <!-- Document text extraction for AI summaries -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.8</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.5.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-scratchpad</artifactId>
+            <version>5.5.1</version>
+        </dependency>
+
         <!-- ALLY AI - Finetuned Dependencies -->
         <dependency>
             <groupId>com.google.cloud</groupId>

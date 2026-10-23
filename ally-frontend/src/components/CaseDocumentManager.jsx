@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Upload, FileText, Trash2, Download, Search, Filter, AlertCircle, CheckCircle, Loader2, Eye, X, Plus, Minus } from 'lucide-react';
+import { Upload, FileText, Trash2, Download, Search, Filter, AlertCircle, CheckCircle, Loader2, Eye, X, Plus, Minus, Sparkles, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { documentService } from '../services/documentService.js';
 import { validateFile, formatFileSize } from '../utils/filePreviewUtils.js';
 import FilePreview from './FilePreview.jsx';
+import MarkdownText from './shared/MarkdownText.jsx';
+import SidePanel from './shared/SidePanel.jsx';
 
-const CaseDocumentManager = ({ caseId, caseInfo, userRole, authData, onDocumentsChange }) => {
+const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -17,18 +19,35 @@ const CaseDocumentManager = ({ caseId, caseInfo, userRole, authData, onDocuments
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
   const [documentContent, setDocumentContent] = useState(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [summaryDocument, setSummaryDocument] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
+  const [documentSummaries, setDocumentSummaries] = useState({});
   
   // Inline File List State
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previewingFile, setPreviewingFile] = useState(null);
   const [showFilePreview, setShowFilePreview] = useState(false);
 
+  const loadCaseDocuments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const docs = await documentService.getCaseDocuments(parseInt(caseId));
+      setDocuments(docs || []);
+    } catch (error) {
+      console.error('Error loading documents:', error);
+      toast.error('Failed to load documents: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [caseId]);
+
   // Load case documents on mount and when caseId changes
   useEffect(() => {
     if (caseId) {
       loadCaseDocuments();
     }
-  }, [caseId]);
+  }, [caseId, loadCaseDocuments]);
 
   // Clean up invalid files on component mount/case change
   useEffect(() => {
@@ -41,19 +60,6 @@ const CaseDocumentManager = ({ caseId, caseInfo, userRole, authData, onDocuments
     });
   }, [caseId]);
 
-  const loadCaseDocuments = async () => {
-    try {
-      setLoading(true);
-      const docs = await documentService.getCaseDocuments(parseInt(caseId));
-      setDocuments(docs || []);
-    } catch (error) {
-      console.error('Error loading documents:', error);
-      toast.error('Failed to load documents: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Handle file selection
   const handleFileSelect = (event) => {
     const files = Array.from(event.target.files);
@@ -61,23 +67,23 @@ const CaseDocumentManager = ({ caseId, caseInfo, userRole, authData, onDocuments
   };
 
   // Handle drag and drop
-  const handleDrop = useCallback((event) => {
+  const handleDrop = (event) => {
     event.preventDefault();
     setDragOver(false);
     
     const files = Array.from(event.dataTransfer.files);
     handleFiles(files);
-  }, []);
+  };
 
-  const handleDragOver = useCallback((event) => {
+  const handleDragOver = (event) => {
     event.preventDefault();
     setDragOver(true);
-  }, []);
+  };
 
-  const handleDragLeave = useCallback((event) => {
+  const handleDragLeave = (event) => {
     event.preventDefault();
     setDragOver(false);
-  }, []);
+  };
 
   // Process files for inline list
   const handleFiles = async (files) => {
@@ -365,6 +371,24 @@ const CaseDocumentManager = ({ caseId, caseInfo, userRole, authData, onDocuments
     }
   };
 
+  const handleSummarizeDocument = async (document, force = false) => {
+    setSummaryDocument(document);
+    setSummaryError('');
+
+    if (!force && documentSummaries[document.documentId]) return;
+
+    setSummaryLoading(true);
+    try {
+      const result = await documentService.summarizeDocument(document.documentId);
+      setDocumentSummaries(current => ({ ...current, [document.documentId]: result }));
+    } catch (error) {
+      console.error('Error summarizing document:', error);
+      setSummaryError(error.message || 'Could not summarize this document');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   // Filter documents based on search and type
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.documentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -595,7 +619,7 @@ const CaseDocumentManager = ({ caseId, caseInfo, userRole, authData, onDocuments
               {filteredDocuments.map((doc) => (
                 <div
                   key={doc.documentId}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex flex-col gap-3 p-4 border border-gray-200 rounded-lg transition-colors hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex items-center space-x-3 flex-1 min-w-0 cursor-pointer" onClick={() => handlePreviewDocument(doc)}>
                     <FileText className="w-5 h-5 text-gray-500 flex-shrink-0" />
@@ -611,7 +635,20 @@ const CaseDocumentManager = ({ caseId, caseInfo, userRole, authData, onDocuments
                     </div>
                   </div>
                   
-                  <div className="flex items-center space-x-2 flex-shrink-0">
+                  <div className="flex items-center self-end space-x-2 flex-shrink-0 sm:self-auto">
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleSummarizeDocument(doc);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-medium text-violet-700 transition-colors hover:bg-violet-100 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:bg-transparent"
+                      title={isSummarizableDocument(doc) ? 'Summarize document' : 'Summaries support PDF, DOC, DOCX, TXT, and MD files'}
+                      disabled={!doc.documentId || !isSummarizableDocument(doc)}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>Summarize</span>
+                    </button>
+
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -656,6 +693,71 @@ const CaseDocumentManager = ({ caseId, caseInfo, userRole, authData, onDocuments
           )}
         </div>
       </div>
+
+      {summaryDocument && (
+        <SidePanel
+          title="AI Document Summary"
+          description={summaryDocument.documentName}
+          busy={summaryLoading}
+          onClose={() => setSummaryDocument(null)}
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto p-5">
+            <div className="p-3 text-sm text-blue-800 border border-blue-200 rounded-lg bg-blue-50">
+              This summary is generated from the uploaded document. Verify important details against the original file.
+            </div>
+
+            {summaryLoading ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <Loader2 className="w-8 h-8 text-violet-600 animate-spin" />
+                <p className="mt-4 font-medium text-gray-900">Reading and summarizing…</p>
+                <p className="mt-1 text-sm text-gray-500">Long documents may take a little longer.</p>
+              </div>
+            ) : summaryError ? (
+              <div className="p-4 mt-5 border border-red-200 rounded-lg bg-red-50">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 mt-0.5 text-red-600 shrink-0" />
+                  <div>
+                    <p className="font-medium text-red-900">Summary unavailable</p>
+                    <p className="mt-1 text-sm text-red-700">{summaryError}</p>
+                  </div>
+                </div>
+              </div>
+            ) : documentSummaries[summaryDocument.documentId] ? (
+              <div className="mt-5">
+                {documentSummaries[summaryDocument.documentId].sourceTextTruncated && (
+                  <p className="p-3 mb-4 text-sm text-amber-800 border border-amber-200 rounded-lg bg-amber-50">
+                    This document exceeded the summary limit, so the summary uses its first section only.
+                  </p>
+                )}
+                <MarkdownText
+                  text={documentSummaries[summaryDocument.documentId].summary}
+                  className="text-sm text-gray-700"
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 shrink-0">
+            <button
+              type="button"
+              disabled={summaryLoading}
+              onClick={() => handleSummarizeDocument(summaryDocument, true)}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-violet-700 border border-violet-200 rounded-md hover:bg-violet-50 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${summaryLoading ? 'animate-spin' : ''}`} />
+              {summaryError ? 'Try again' : 'Regenerate'}
+            </button>
+            <button
+              type="button"
+              disabled={summaryLoading}
+              onClick={() => setSummaryDocument(null)}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              Close
+            </button>
+          </div>
+        </SidePanel>
+      )}
 
       {/* Document Viewer Modal */}
       {showDocumentViewer && selectedDocument && (
@@ -835,6 +937,11 @@ const CaseDocumentManager = ({ caseId, caseInfo, userRole, authData, onDocuments
       )}
     </div>
   );
+};
+
+const isSummarizableDocument = document => {
+  const type = String(document?.documentType || document?.documentName?.split('.').pop() || '').toLowerCase().replace('.', '');
+  return ['pdf', 'doc', 'docx', 'txt', 'md'].includes(type);
 };
 
 export default CaseDocumentManager;
