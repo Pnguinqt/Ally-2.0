@@ -6,6 +6,7 @@ import lombok.Data;
 public class ChatRequest {
     private String conversationId;
     private String requestId;
+    private String language = "en";
     private java.util.List<PreviousMessage> previousMessages;
     public record PreviousMessage(String role, String content) {}
     private String message;

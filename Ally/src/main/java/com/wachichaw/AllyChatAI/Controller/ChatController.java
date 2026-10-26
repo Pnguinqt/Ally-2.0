@@ -43,6 +43,8 @@ public class ChatController {
     @PostMapping("/prompt")
     public ResponseEntity<ChatResponse> chat(@RequestBody ChatRequest request, HttpServletRequest httpRequest) {
         ChatResponse chatResponse = new ChatResponse();
+        boolean useBisaya = "ceb".equalsIgnoreCase(request.getLanguage())
+            || "bisaya".equalsIgnoreCase(request.getLanguage());
         chatResponse.setRagEnabled(request.isUseRAG());
         try {
             chatResponse.setConversationId(request.getConversationId() == null
@@ -50,12 +52,16 @@ public class ChatController {
             chatResponse.setRequestId(request.getRequestId() == null
                 ? java.util.UUID.randomUUID().toString() : java.util.UUID.fromString(request.getRequestId()).toString());
         } catch (IllegalArgumentException invalidId) {
-            chatResponse.setResponse("Unable to open this conversation. Please start a new chat.");
+            chatResponse.setResponse(useBisaya
+                ? "Dili maablihan kini nga panag-istorya. Palihog pagsugod og bag-ong chat."
+                : "Unable to open this conversation. Please start a new chat.");
             return ResponseEntity.badRequest().body(chatResponse);
         }
         Integer conversationUserId = extractOptionalUserId(httpRequest);
         if (httpRequest.getHeader("Authorization") != null && conversationUserId == null) {
-            chatResponse.setResponse("Your session has expired. Please sign in again to continue your saved conversation.");
+            chatResponse.setResponse(useBisaya
+                ? "Nahuman na ang imong sesyon. Palihog sulod pag-usab aron ipadayon ang na-save nga panag-istorya."
+                : "Your session has expired. Please sign in again to continue your saved conversation.");
             return ResponseEntity.status(401).body(chatResponse);
         }
         var priorTurns = conversationUserId == null
@@ -89,7 +95,10 @@ public class ChatController {
         System.out.println("📝 Received message: " + request.getMessage());
         System.out.println("🔍 RAG enabled: " + request.isUseRAG());
         
-        String enhancedPrompt = request.getMessage();
+        String enhancedPrompt = useBisaya
+            ? request.getMessage() + "\n\nTubaga sa natural ug klarong Cebuano (Bisaya). "
+                + "Ibilin sa English ang mga opisyal nga ngalan sa balaod, kaso, ahensya, ug legal citations kon gikinahanglan."
+            : request.getMessage();
 
         // ==========================================
         // STAGE 1: Python DeepSeek Validation
@@ -163,7 +172,9 @@ public class ChatController {
                 if (ragResults == null || "system_error".equals(ragResults.getRejectionStage()))
                     throw new IllegalStateException();
             } catch (Exception unavailable) {
-                chatResponse.setResponse("Case retrieval is unavailable. Please try again later.");
+                chatResponse.setResponse(useBisaya
+                    ? "Dili magamit karon ang pagpangita og kaso. Palihog sulayi pag-usab unya."
+                    : "Case retrieval is unavailable. Please try again later.");
                 chatResponse.setConfidence("Service unavailable");
                 return ResponseEntity.status(503).body(chatResponse);
             }
@@ -183,8 +194,13 @@ public class ChatController {
             // Never generate an inferred outcome from retrieved excerpts.
             chatResponse.setResponse(Boolean.TRUE.equals(ragResults.getRejected())
                 ? ragResults.getRejectionReason()
-                : cases.isEmpty() ? "No sufficiently relevant case was found in ALLY’s current verified collection. This does not mean that no applicable Supreme Court decision exists. Consider searching the official Supreme Court E-Library or consulting a qualified legal professional."
-                : "These verified cases are potentially relevant research material. Review why each relates to your question and its official decision. Similarity does not establish legal applicability or mean that a decision controls your situation.");
+                : cases.isEmpty()
+                    ? (useBisaya
+                        ? "Walay igo nga may kalabotan nga kaso nga nakit-an sa kasamtangang napamatud-ang koleksiyon sa ALLY. Dili kini nagpasabot nga walay magamit nga desisyon sa Korte Suprema. Sulayi pagpangita sa opisyal nga Supreme Court E-Library o pagkonsulta sa kwalipikadong legal nga propesyonal."
+                        : "No sufficiently relevant case was found in ALLY’s current verified collection. This does not mean that no applicable Supreme Court decision exists. Consider searching the official Supreme Court E-Library or consulting a qualified legal professional.")
+                    : (useBisaya
+                        ? "Kining napamatud-ang mga kaso posibleng may kalabotan nga materyal sa panukiduki. Susiha nganong may kalabotan ang matag usa sa imong pangutana ug ang opisyal nga desisyon niini. Ang pagkapareho dili awtomatikong nagpasabot nga legal kining magamit o nga ang desisyon maoy magbuot sa imong sitwasyon."
+                        : "These verified cases are potentially relevant research material. Review why each relates to your question and its official decision. Similarity does not establish legal applicability or mean that a decision controls your situation."));
             saveHistoryIfAuthenticated(httpRequest, request.getMessage(), chatResponse);
             return ResponseEntity.ok(chatResponse);
 
