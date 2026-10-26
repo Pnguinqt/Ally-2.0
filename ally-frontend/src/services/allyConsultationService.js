@@ -10,6 +10,7 @@ export const sendConsultationMessage = async (message, useRAG = false, conversat
       { 
         message,
         useRAG, conversationId, requestId,
+        language: localStorage.getItem('ally-language') || 'en',
         previousMessages: messages.slice(-40).map(item => ({ role: item.sender === 'user' ? 'user' : 'assistant', content: item.text }))
       }, 
       {

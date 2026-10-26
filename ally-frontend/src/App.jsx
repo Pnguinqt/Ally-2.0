@@ -34,6 +34,7 @@ import { SidebarProvider } from './contexts/SidebarContext'
 import PageLayout from './components/PageLayout.jsx'
 import { validateAndGetAuthData } from './utils/auth.jsx'
 import NotFound from './pages/NotFound'
+import LanguageSwitcher from './components/LanguageSwitcher'
 
 const LayoutRoutes = () => (
   <PageLayout>
@@ -135,6 +136,7 @@ function App() {
       <SidebarProvider>
         <Toaster position="top-center" richColors />
         <AppContent />
+        <LanguageSwitcher />
       </SidebarProvider>
     </Router>
   );

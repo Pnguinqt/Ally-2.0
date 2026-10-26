@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Mail, Bell, Key, Database, Clock, Globe, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const SettingsDashboard = () => {
+  const { language, setLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState('security');
   const [emailNotifications, setEmailNotifications] = useState({
     newUser: true,
@@ -36,7 +38,7 @@ const SettingsDashboard = () => {
       } else {
         toast.error('Failed to fetch system settings.');
       }
-    } catch (error) {
+    } catch {
       toast.error('An error occurred while fetching settings.');
     }
   };
@@ -61,14 +63,13 @@ const SettingsDashboard = () => {
         // Revert UI change on failure
         setSystemSettings(prev => ({...prev, [settingName]: !value}));
       }
-    } catch (error) {
+    } catch {
       toast.error('An error occurred while updating settings.');
       setSystemSettings(prev => ({...prev, [settingName]: !value}));
     }
   };
 
   const [oldSystemSettings, setOldSystemSettings] = useState({
-    language: "en",
     timezone: "UTC+8",
     dateFormat: "MM/DD/YYYY"
   });
@@ -225,16 +226,13 @@ const SettingsDashboard = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Language</label>
                   <select
-                    value={oldSystemSettings.language}
-                    onChange={(e) => setOldSystemSettings(prev => ({
-                      ...prev,
-                      language: e.target.value
-                    }))}
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
                     className="mt-1 block w-full px-3 py-2 border rounded-md text-sm"
+                    data-no-translate
                   >
                     <option value="en">English</option>
-                    <option value="es">Español</option>
-                    <option value="fr">Français</option>
+                    <option value="ceb">Bisaya</option>
                   </select>
                 </div>
 
