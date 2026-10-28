@@ -1,9 +1,10 @@
 import RetrievedCases, { SIMILARITY_NOTICE } from './RetrievedCases';
 import { historyMessages, mergeHistory } from '../services/consultationHistory';
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Search, MessageSquarePlus, History, RotateCcw, Trash2 } from 'lucide-react';
+import { Bot, Send, Search, MessageSquarePlus, History, RotateCcw, Trash2 } from 'lucide-react';
 import { sendConsultationMessage, checkRagHealth, getConsultationHistory, deleteConsultationHistory } from '../services/allyConsultationService';
 import MarkdownText from './shared/MarkdownText';
+import AIAnswerCard from './chat-ui/AIAnswerCard';
 
 const RETRIEVAL_NOTICE = "Retrieved case text is shown below. Review the source decision before relying on a legal outcome.";
 const VERIFIED_CASES_INTRO = "These verified cases are potentially relevant research material. Review why each relates to your question and its official decision. Similarity does not establish legal applicability or mean that a decision controls your situation.";
@@ -378,31 +379,48 @@ const AllyConsultationChat = () => {
               {messages.map((message) => (
                 <div key={message.id} className="min-w-0">
                   {/* Main Message */}
-                  {!(message.sender === 'ai' && (
+                  {message.sender === 'user' ? (
+                    <div className="flex min-w-0 justify-end">
+                      <div className="max-w-[min(38rem,88%)] break-words rounded-3xl rounded-br-lg bg-blue-600 px-5 py-3 text-white shadow-sm [overflow-wrap:anywhere]">
+                        <MarkdownText text={message.text} className="text-sm leading-relaxed" />
+                      </div>
+                    </div>
+                  ) : !(
                     message.text === RETRIEVAL_NOTICE ||
                     (message.ragEnabled && message.text?.trim() === VERIFIED_CASES_INTRO)
-                  )) && <div className={`flex min-w-0 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[min(42rem,85%)] break-words px-5 py-3 rounded-3xl [overflow-wrap:anywhere] ${
-                      message.sender === 'user' 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      <MarkdownText text={message.text} className="text-sm leading-relaxed" />
+                  ) && (
+                    <div className="flex min-w-0 justify-start">
+                      <AIAnswerCard message={message} />
                     </div>
-                  </div>}
+                  )}
 
-                  {message.sender === 'ai' && message.ragEnabled && <RetrievedCases message={message} />}
+                  {message.sender === 'ai' && message.ragEnabled && (
+                    <div className="flex justify-start">
+                      <div className="w-full max-w-3xl sm:pl-[3.25rem]">
+                        <RetrievedCases message={message} />
+                      </div>
+                    </div>
+                  )}
 
                 </div>
               ))}
         
               {(isTyping || pending) && (
-                <div className="flex justify-start">
-                  <div className="px-5 py-3 bg-gray-100 rounded-3xl">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                <div className="flex max-w-3xl items-start gap-3 sm:gap-4" role="status" aria-live="polite">
+                  <div className="mt-1 hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm sm:flex">
+                    <Bot className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="flex space-x-1">
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500"></div>
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500" style={{ animationDelay: '0.2s' }}></div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">ALLY is preparing a response</p>
+                        <p className="mt-0.5 text-xs text-slate-500">Reviewing your question and organizing the answer…</p>
+                      </div>
                     </div>
                   </div>
                 </div>

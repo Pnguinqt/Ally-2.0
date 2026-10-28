@@ -11,6 +11,7 @@ const MyCasesPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showSubmissionForm, setShowSubmissionForm] = useState(false);
+  const [caseToEdit, setCaseToEdit] = useState(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [authData, setAuthData] = useState(null);
   const [trackedCaseId, setTrackedCaseId] = useState(null);
@@ -69,6 +70,16 @@ const MyCasesPage = () => {
   const handleCaseSubmitted = () => {
     setShowSubmissionForm(false);
     fetchCases(); // Refresh cases list
+  };
+
+  const handleEditCase = (case_) => {
+    setShowSubmissionForm(false);
+    setCaseToEdit(case_);
+  };
+
+  const handleCaseUpdated = () => {
+    setCaseToEdit(null);
+    fetchCases();
   };
   // Handle status change for lawyer
   const handleStatusChange = async (caseId, newStatus) => {
@@ -155,6 +166,14 @@ const MyCasesPage = () => {
         />
       )}
 
+      {caseToEdit && (
+        <CaseSubmissionForm
+          caseToEdit={caseToEdit}
+          onClose={() => setCaseToEdit(null)}
+          onSuccess={handleCaseUpdated}
+        />
+      )}
+
       <div className="container max-w-5xl px-4 mx-auto py-8">
         <div className="p-4 bg-white shadow-sm sm:p-6 md:p-8 rounded-xl">
           {/* Header */}
@@ -214,6 +233,7 @@ const MyCasesPage = () => {
             userRole={authData?.accountType}
             onStatusChange={handleStatusChange}
             onDeleteCase={handleDeleteCase}
+            onEditCase={handleEditCase}
             onAppointmentBooked={handleAppointmentBooked}
             onTrackCase={setTrackedCaseId}
           />

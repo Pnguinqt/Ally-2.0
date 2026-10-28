@@ -92,6 +92,39 @@ public class LegalCaseService {
         return legalCaseRepo.save(legalCase);
     }
 
+    public LegalCasesEntity updateCaseDetails(int caseId, int clientId, String title,
+                                               String caseType, String description) {
+        LegalCasesEntity legalCase = legalCaseRepo.findById(caseId)
+                .orElseThrow(() -> new RuntimeException("Case not found with ID: " + caseId));
+
+        if (legalCase.getClient() == null || legalCase.getClient().getUserId() != clientId) {
+            throw new RuntimeException("Client " + clientId + " is not authorized to edit case " + caseId);
+        }
+
+        if (legalCase.getStatus() == CaseStatus.COMPLETED || legalCase.getStatus() == CaseStatus.CANCELLED) {
+            throw new IllegalStateException("Completed or cancelled cases cannot be edited");
+        }
+
+        String normalizedTitle = title == null ? "" : title.trim();
+        String normalizedCaseType = caseType == null ? "" : caseType.trim();
+        String normalizedDescription = description == null ? "" : description.trim();
+
+        if (normalizedTitle.length() < 5) {
+            throw new IllegalArgumentException("Case title must be at least 5 characters long");
+        }
+        if (normalizedCaseType.isEmpty()) {
+            throw new IllegalArgumentException("Case type is required");
+        }
+        if (normalizedDescription.length() < 20 || normalizedDescription.length() > 1000) {
+            throw new IllegalArgumentException("Case description must be between 20 and 1000 characters long");
+        }
+
+        legalCase.setTitle(normalizedTitle);
+        legalCase.setCaseType(normalizedCaseType);
+        legalCase.setDescription(normalizedDescription);
+        return legalCaseRepo.save(legalCase);
+    }
+
     public LegalCasesEntity acceptCase(int caseId, int lawyerIdPerformingAction) {
         LegalCasesEntity legalCase = legalCaseRepo.findById(caseId)
                 .orElseThrow(() -> new RuntimeException("Case not found with ID: " + caseId));

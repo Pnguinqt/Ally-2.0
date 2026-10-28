@@ -3,7 +3,7 @@ import { FileX, Briefcase } from 'lucide-react';
 import CaseCard from './CaseCard.jsx';
 import { CaseDetailsModal } from './CaseDetailsModal.jsx';
 
-const CasesList = ({ cases, userRole, onStatusChange, onDeleteCase, onAppointmentBooked, onTrackCase }) => {
+const CasesList = ({ cases, userRole, onStatusChange, onDeleteCase, onEditCase, onAppointmentBooked, onTrackCase }) => {
   const [selectedCase, setSelectedCase] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -40,6 +40,11 @@ const CasesList = ({ cases, userRole, onStatusChange, onDeleteCase, onAppointmen
         handleCloseModal();
       }
     }
+  };
+
+  const handleEditCase = (case_) => {
+    handleCloseModal();
+    onEditCase?.(case_);
   };
   if (cases.length === 0) {
     return (
@@ -121,7 +126,7 @@ const CasesList = ({ cases, userRole, onStatusChange, onDeleteCase, onAppointmen
             userRole={userRole}
             onStatusChange={onStatusChange}
             onDeleteCase={handleDeleteCase}
-            onAppointmentBooked={onAppointmentBooked}
+            onEditCase={handleEditCase}
             onCardClick={handleCaseClick}
             onTrackCase={onTrackCase}
           />
@@ -136,6 +141,7 @@ const CasesList = ({ cases, userRole, onStatusChange, onDeleteCase, onAppointmen
         onClose={handleCloseModal}
         onStatusChange={handleModalStatusChange}
         onDeleteCase={handleDeleteCase}
+        onEditCase={handleEditCase}
         onAppointmentBooked={handleModalAppointmentBooked}
       />
     </div>

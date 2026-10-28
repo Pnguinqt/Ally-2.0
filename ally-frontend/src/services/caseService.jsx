@@ -86,6 +86,37 @@ export const caseService = {
     }
   },
 
+  // Update case details owned by the current client
+  updateCase: async (caseId, caseData) => {
+    try {
+      const authData = getAuthData();
+      if (!authData) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/${caseId}/client/${authData.userId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${authData.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(caseData),
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error('You do not have permission to edit this case');
+        }
+        throw new Error('Failed to update case details');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error updating case:', error);
+      throw error;
+    }
+  },
+
   // Update case status
   updateCaseStatus: async (caseId, status) => {
     try {

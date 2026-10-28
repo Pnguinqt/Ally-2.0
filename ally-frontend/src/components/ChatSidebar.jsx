@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { MessageSquarePlus, Folder, FileText, Calendar, UserSearch, MessageCircle, Settings, LogOut, ChevronLeft, ChevronRight, ChevronsUpDown, User, Shield, X, Menu, BriefcaseBusiness } from 'lucide-react';
+import { MessageSquarePlus, Folder, Calendar, UserSearch, MessageCircle, Settings, LogOut, ChevronLeft, ChevronRight, ChevronsUpDown, User, Shield, X, Menu, BriefcaseBusiness } from 'lucide-react';
 import { useSidebar } from '../contexts/SidebarContext';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { getAuthData } from '../utils/auth.jsx';
@@ -30,9 +30,8 @@ const ChatSidebar = () => {
   const navigationItems = [
     { name: 'New Chat', path: '/', icon: MessageSquarePlus, action: 'newChat' },
     { name: 'Messages', path: '/messages', icon: MessageCircle },
-    { name: 'Workspace', path: '/workspace', icon: BriefcaseBusiness },
+    { name: 'Case Workspace', path: '/workspace', icon: BriefcaseBusiness },
     { name: 'My Cases', path: '/my-cases', icon: Folder },
-    { name: 'Documents', path: '/documents', icon: FileText },
     { name: 'Appointment', path: '/appointments', icon: Calendar },
     { name: 'Find Lawyer', path: '/lawyers', icon: UserSearch },
   ];

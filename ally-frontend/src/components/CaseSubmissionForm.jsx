@@ -1,23 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Send, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Send, Save, AlertCircle, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { caseService } from '../services/caseService.jsx';
 import { getAuthData } from '../utils/auth.jsx';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/modalScrollLock';
 
-const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer }) => {
+const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) => {
   const navigate = useNavigate();
+  const isEditing = Boolean(caseToEdit);
   const [formData, setFormData] = useState({
-    title: '',
-    description: ''
+    title: caseToEdit?.title || '',
+    description: caseToEdit?.description || ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [errors, setErrors] = useState({});
   const [lawyers, setLawyers] = useState([]);
-  const [lawyerId, setLawyerId] = useState('');
-  const [caseType, setCaseType] = useState('');
-  const [availableCaseTypes, setAvailableCaseTypes] = useState([]);
+  const [lawyerId, setLawyerId] = useState(caseToEdit?.lawyer?.userId?.toString() || '');
+  const [caseType, setCaseType] = useState(caseToEdit?.caseType || '');
+  const [availableCaseTypes, setAvailableCaseTypes] = useState(
+    caseToEdit?.caseType ? [caseToEdit.caseType] : []
+  );
   const [filteredLawyers, setFilteredLawyers] = useState([]);
 
   // Disable body scroll when modal is open (using counter for nested modals)
@@ -54,14 +58,17 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer }) => {
           }
         });
         
+        if (caseToEdit?.caseType) {
+          caseTypesSet.add(caseToEdit.caseType);
+        }
         const sortedCaseTypes = Array.from(caseTypesSet).sort();
         setAvailableCaseTypes(sortedCaseTypes);
       })
       .catch(() => {
         setLawyers([]);
-        setAvailableCaseTypes([]);
+        setAvailableCaseTypes(caseToEdit?.caseType ? [caseToEdit.caseType] : []);
       });
-  }, []);
+  }, [caseToEdit]);
   useEffect(() => {
     // Pre-select lawyer if provided and filter case types to lawyer's specializations
     if (selectedLawyer && selectedLawyer.id && lawyers.length > 0) {
@@ -124,7 +131,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer }) => {
       newErrors.caseType = 'Please select a case type';
     }
     
-    if (!lawyerId) {
+    if (!isEditing && !lawyerId) {
       newErrors.lawyerId = 'Please select a lawyer';
     }
 
@@ -161,28 +168,42 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer }) => {
     try {
       const authData = getAuthData();
       if (!authData) {
-        throw new Error('You must be logged in to submit a case');
+        throw new Error(`You must be logged in to ${isEditing ? 'edit' : 'submit'} a case`);
       }
       
       const caseData = {
         title: formData.title.trim(),
         description: formData.description.trim(),
-        caseType: caseType,
-        lawyerId: Number(lawyerId)
+        caseType: caseType
       };
-      
-      await caseService.createCase(authData.userId, caseData);
+
+      let savedCase;
+      if (isEditing) {
+        savedCase = await caseService.updateCase(caseToEdit.caseId, caseData);
+      } else {
+        savedCase = await caseService.createCase(authData.userId, {
+          ...caseData,
+          lawyerId: Number(lawyerId)
+        });
+      }
       
       // Call success callback
       if (onSuccess) {
-        onSuccess();
+        onSuccess(savedCase);
       }
-      
-      // Navigate to My Cases page
-      navigate('/my-cases');
+
+      if (isEditing) {
+        toast.success(
+          caseToEdit.lawyer
+            ? 'Case details updated successfully. The changes are now visible to your lawyer.'
+            : 'Case details updated successfully.'
+        );
+      } else {
+        navigate('/my-cases');
+      }
     } catch (err) {
-      console.error('Error submitting case:', err);
-      setError(err.message || 'Failed to submit case. Please try again.');
+      console.error(`Error ${isEditing ? 'updating' : 'submitting'} case:`, err);
+      setError(err.message || `Failed to ${isEditing ? 'update' : 'submit'} case. Please try again.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -195,7 +216,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer }) => {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-semibold text-gray-900">
-            Submit New Legal Case
+            {isEditing ? `Edit Case #${caseToEdit.caseId}` : 'Submit New Legal Case'}
           </h3>
           <button
             onClick={onClose}
@@ -248,40 +269,55 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer }) => {
           </div>
 
           {/* Lawyer Selection */}
-          <div>
-            <label htmlFor="lawyerId" className="block text-sm font-medium text-gray-700 mb-2">
-              Select a Lawyer *
-            </label>
-            <select
-              id="lawyerId"
-              name="lawyerId"
-              value={lawyerId}
-              onChange={e => setLawyerId(e.target.value)}
-              className={`w-full px-3 py-2 border rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.lawyerId ? 'border-red-300' : 'border-gray-300'}`}
-              disabled={isSubmitting || selectedLawyer || (!selectedLawyer && (!caseType || filteredLawyers.length === 0))}
-            >
-              <option value="">
-                {selectedLawyer ? `${selectedLawyer.name} (Pre-selected)` :
-                 !caseType ? "-- Select case type first --" :
-                 filteredLawyers.length === 0 ? "-- No lawyers available for this case type --" :
-                 "-- Select a lawyer --"}
-              </option>
-              {!selectedLawyer && filteredLawyers.map(lawyer => (
-                <option key={lawyer.userId} value={lawyer.userId}>
-                  {lawyer.Fname} {lawyer.Lname}
-                </option>
-              ))}
-            </select>
-            {selectedLawyer && (
-              <p className="mt-1 text-sm text-blue-600">
-                Submitting case to: {selectedLawyer.name}
+          {isEditing ? (
+            <div>
+              <span className="block text-sm font-medium text-gray-700 mb-2">
+                Assigned Lawyer
+              </span>
+              <div className="w-full px-3 py-2 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-md">
+                {caseToEdit.lawyer
+                  ? `${caseToEdit.lawyer.Fname} ${caseToEdit.lawyer.Lname}`
+                  : 'No lawyer assigned'}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Editing the case will not change its assigned lawyer.
               </p>
-            )}
-            {errors.lawyerId && (
-              <p className="mt-1 text-sm text-red-600">{errors.lawyerId}</p>
-            )}
-            
-          </div>
+            </div>
+          ) : (
+            <div>
+              <label htmlFor="lawyerId" className="block text-sm font-medium text-gray-700 mb-2">
+                Select a Lawyer *
+              </label>
+              <select
+                id="lawyerId"
+                name="lawyerId"
+                value={lawyerId}
+                onChange={e => setLawyerId(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.lawyerId ? 'border-red-300' : 'border-gray-300'}`}
+                disabled={isSubmitting || selectedLawyer || (!selectedLawyer && (!caseType || filteredLawyers.length === 0))}
+              >
+                <option value="">
+                  {selectedLawyer ? `${selectedLawyer.name} (Pre-selected)` :
+                   !caseType ? "-- Select case type first --" :
+                   filteredLawyers.length === 0 ? "-- No lawyers available for this case type --" :
+                   "-- Select a lawyer --"}
+                </option>
+                {!selectedLawyer && filteredLawyers.map(lawyer => (
+                  <option key={lawyer.userId} value={lawyer.userId}>
+                    {lawyer.Fname} {lawyer.Lname}
+                  </option>
+                ))}
+              </select>
+              {selectedLawyer && (
+                <p className="mt-1 text-sm text-blue-600">
+                  Submitting case to: {selectedLawyer.name}
+                </p>
+              )}
+              {errors.lawyerId && (
+                <p className="mt-1 text-sm text-red-600">{errors.lawyerId}</p>
+              )}
+            </div>
+          )}
 
           {/* Case Title */}
           <div>
@@ -329,13 +365,15 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer }) => {
             </p>
           </div>
 
-          {/* Privacy Notice */}
+          {/* Privacy / update notice */}
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h4 className="text-sm font-medium text-blue-900 mb-2">Privacy Notice</h4>
+            <h4 className="text-sm font-medium text-blue-900 mb-2">
+              {isEditing ? 'Update Notice' : 'Privacy Notice'}
+            </h4>
             <p className="text-xs text-blue-800 leading-relaxed">
-              Your case information will be shared with qualified lawyers in our network for the purpose of 
-              case evaluation and assignment. We maintain strict confidentiality standards and your personal 
-              information is protected according to our privacy policy.
+              {isEditing
+                ? `Once saved, the updated case details will be recorded${caseToEdit.lawyer ? ' and visible to your assigned lawyer' : ''}. You will receive a confirmation notification.`
+                : 'Your case information will be shared with qualified lawyers in our network for the purpose of case evaluation and assignment. We maintain strict confidentiality standards and your personal information is protected according to our privacy policy.'}
             </p>
           </div>
 
@@ -357,12 +395,12 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer }) => {
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Submitting...
+                  {isEditing ? 'Saving...' : 'Submitting...'}
                 </>
               ) : (
                 <>
-                  <Send className="w-4 h-4" />
-                  Submit Case
+                  {isEditing ? <Save className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                  {isEditing ? 'Save Changes' : 'Submit Case'}
                 </>
               )}
             </button>
