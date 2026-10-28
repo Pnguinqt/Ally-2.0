@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +20,7 @@ import java.util.Optional;
 
 import com.wachichaw.Case.Entity.CaseStatus;
 import com.wachichaw.Case.Entity.LegalCaseRequestDTO;
+import com.wachichaw.Case.Entity.LegalCaseUpdateRequestDTO;
 import com.wachichaw.Case.Entity.LegalCasesEntity;
 import com.wachichaw.Case.Repo.LegalCaseRepo;
 import com.wachichaw.Case.Entity.LegalCaseResponseDTO;
@@ -102,8 +104,47 @@ public class LegalCasesController {
     @PutMapping("/{caseId}/status")
     public ResponseEntity<LegalCasesEntity> updateCaseStatus(@PathVariable int caseId, @RequestBody CaseStatus status) {
         return updateStatus(caseId, status);
-    }    
-    
+    }
+
+    @PutMapping("/{caseId}/client/{clientId}")
+    public ResponseEntity<LegalCaseResponseDTO> updateClientCase(
+            @PathVariable int caseId,
+            @PathVariable int clientId,
+            @RequestBody LegalCaseUpdateRequestDTO request,
+            Authentication authentication) {
+        try {
+            if (authentication == null || authentication.getName() == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+            boolean isRequestingClient = userRepo.findByEmail(authentication.getName())
+                .map(user -> user.getUserId() == clientId)
+                .orElse(false);
+            if (!isRequestingClient) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+
+            LegalCasesEntity updatedCase = LegalCaseService.updateCaseDetails(
+                caseId,
+                clientId,
+                request.getTitle(),
+                request.getCaseType(),
+                request.getDescription()
+            );
+            auditLogService.log(clientId, "EDIT_CASE", "CASE", "CASE", String.valueOf(caseId),
+                "Client edited case details for case #" + caseId, "SUCCESS");
+            return ResponseEntity.ok(new LegalCaseResponseDTO(updatedCase));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        } catch (RuntimeException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+
     @PutMapping("/{caseId}/accept/{lawyerId}")
     public ResponseEntity<LegalCasesEntity> acceptCase(@PathVariable int caseId, @PathVariable int lawyerId) {
         try {

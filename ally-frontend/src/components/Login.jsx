@@ -117,30 +117,6 @@ const Login = () => {
             <div onClick={() => navigate('/')} className="cursor-pointer">
               <img src="/ally_logo.svg" alt="ALLY" className="w-28 h-10" />
             </div>
-            
-            {/* Navigation Links */}
-            <div className="flex items-center">
-              <div className="flex items-center gap-8">
-                <Link 
-                  to="#" 
-                  className="text-[#11265A] text-base font-medium hover:text-blue-600 transition-colors"
-                >
-                  About
-                </Link>
-                <Link 
-                  to="#" 
-                  className="text-[#11265A] text-base font-medium hover:text-blue-600 transition-colors"
-                >
-                  Legal Resources
-                </Link>
-                <Link 
-                  to="#" 
-                  className="text-[#11265A] text-base font-medium hover:text-blue-600 transition-colors"
-                >
-                  FAQ
-                </Link>
-              </div>
-            </div>
           </div>
         </div>
       </nav>

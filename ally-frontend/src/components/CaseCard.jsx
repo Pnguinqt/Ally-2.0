@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Calendar, User, Clock, CheckCircle, XCircle, AlertCircle, Check, X, Trash2, MapPin } from 'lucide-react';
+import { Calendar, User, Clock, CheckCircle, XCircle, AlertCircle, Check, X, Trash2, MapPin, Pencil } from 'lucide-react';
 
-const CaseCard = ({ case_, userRole, onStatusChange, onDeleteCase, onAppointmentBooked, onCardClick, onTrackCase }) => {
+const CaseCard = ({ case_, userRole, onStatusChange, onDeleteCase, onEditCase, onCardClick, onTrackCase }) => {
   const [isAccepting, setIsAccepting] = useState(false);
   const [isDeclining, setIsDeclining] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -69,6 +69,14 @@ const CaseCard = ({ case_, userRole, onStatusChange, onDeleteCase, onAppointment
   };
 
   const canClientDelete = userRole === 'CLIENT' && ['PENDING', 'DECLINED'].includes(case_.status);
+  const canClientEdit = userRole === 'CLIENT' && !['COMPLETED', 'CANCELLED'].includes(case_.status);
+
+  const handleEditCase = (e) => {
+    e.stopPropagation();
+    if (canClientEdit) {
+      onEditCase?.(case_);
+    }
+  };
 
   const handleTrackCase = (e) => {
     e.stopPropagation();
@@ -159,6 +167,16 @@ const CaseCard = ({ case_, userRole, onStatusChange, onDeleteCase, onAppointment
             <MapPin className="w-3 h-3 mr-1" />
             Track
           </button>
+
+          {canClientEdit && (
+            <button
+              onClick={handleEditCase}
+              className="flex items-center px-3 py-1.5 text-xs text-slate-700 transition-colors bg-white border border-slate-300 rounded hover:bg-slate-50"
+            >
+              <Pencil className="w-3 h-3 mr-1" />
+              Edit
+            </button>
+          )}
 
           {/* Status Badge */}
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-medium ${getStatusColor(case_.status)}`}>

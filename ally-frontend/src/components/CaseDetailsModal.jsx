@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, User, FileText, CheckCircle, XCircle, AlertCircle, Clock, CalendarPlus, Upload, Eye, Trash2 } from 'lucide-react';
+import { X, Calendar, User, FileText, CheckCircle, XCircle, AlertCircle, Clock, CalendarPlus, Upload, Eye, Trash2, Pencil } from 'lucide-react';
 import { BookingModal } from './BookingModal';
 import { documentService } from '../services/documentService';
 import { getAuthData } from '../utils/auth';
@@ -12,6 +12,7 @@ export const CaseDetailsModal = ({
   onClose, 
   onStatusChange, 
   onDeleteCase,
+  onEditCase,
   onAppointmentBooked 
 }) => {
   const navigate = useNavigate();
@@ -132,6 +133,13 @@ export const CaseDetailsModal = ({
   };
 
   const canClientDelete = userRole === 'CLIENT' && ['PENDING', 'DECLINED'].includes(case_?.status);
+  const canClientEdit = userRole === 'CLIENT' && !['COMPLETED', 'CANCELLED'].includes(case_?.status);
+
+  const handleEditCase = () => {
+    if (canClientEdit) {
+      onEditCase?.(case_);
+    }
+  };
 
   const handleDeleteCase = async () => {
     if (!onDeleteCase || !canClientDelete) return;
@@ -339,7 +347,17 @@ export const CaseDetailsModal = ({
 
           {/* Footer with Actions */}
           <div className="flex justify-between items-center p-6 border-t border-gray-200 bg-gray-50">
-            <div>
+            <div className="flex items-center gap-3">
+              {canClientEdit && (
+                <button
+                  onClick={handleEditCase}
+                  className="flex items-center gap-2 px-6 py-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Edit Case
+                </button>
+              )}
+
               {case_.status === 'ACCEPTED' && (
                 <button
                   onClick={handleCompleteCase}
