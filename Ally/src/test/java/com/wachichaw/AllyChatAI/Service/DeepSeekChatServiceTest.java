@@ -9,6 +9,7 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
@@ -33,6 +34,7 @@ class DeepSeekChatServiceTest {
     @Test void continuesTruncatedAnswers() {
         server.expect(requestTo("https://example.test/chat/completions"))
             .andExpect(jsonPath("$.max_tokens").value(16384))
+            .andExpect(jsonPath("$.messages[0].content").value(containsString("QUICK_SUMMARY:")))
             .andRespond(withSuccess(completion("First part. ", "length"), MediaType.APPLICATION_JSON));
         server.expect(requestTo("https://example.test/chat/completions"))
             .andExpect(jsonPath("$.thinking.type").value("disabled"))

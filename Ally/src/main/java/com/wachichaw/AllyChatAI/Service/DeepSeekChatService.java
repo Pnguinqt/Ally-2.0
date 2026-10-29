@@ -40,6 +40,8 @@ public class DeepSeekChatService {
         "Do not say that you lack access to 2025 or 2026 cases when retrieved case context has been provided. " +
         "If no retrieved context is provided, you may state that your built-in model knowledge may be limited, but still answer cautiously based on available information. " +
         "If the user asks about non-legal topics, politely steer them back to legal matters. " +
+        "Begin every answer with exactly one plain-text line in the format 'QUICK_SUMMARY: <summary>'. " +
+        "The summary must be one clear sentence of no more than 30 words. After a blank line, provide the complete answer without repeating the summary verbatim. " +
         "Keep your answers professional, concise, and helpful.";
 
     @Value("${deepseek.max-continuations:2}")
