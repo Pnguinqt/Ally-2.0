@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { Toaster } from 'sonner'
 import './App.css'
@@ -26,10 +26,8 @@ import LegalWorkspacePage from './pages/LegalWorkspacePage.jsx'
 import AccountSettings from './components/AccountSettings'
 import ChatContainer from './components/ChatContainer'
 import MyCasesPage from './pages/MyCasesPage'
-import LawyerSettings from './components/LawyerSettings'
 import OAuth2RedirectHandler from './pages/OAuth2RedirectHandler'
 import AllyConsultationChat from './components/AllyConsultationChat'
-import ClientSecurity from './components/ClientSecurity'
 import { SidebarProvider } from './contexts/SidebarContext'
 import PageLayout from './components/PageLayout.jsx'
 import { validateAndGetAuthData } from './utils/auth.jsx'
@@ -96,8 +94,8 @@ function AppContent() {
             <Route path="/documents" element={<ProtectedRoute><DocumentsPage /></ProtectedRoute>} />
             <Route path="/documents/:caseId" element={<ProtectedRoute><DocumentsPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
-            <Route path="/settings/security" element={<ProtectedRoute><ClientSecurity /></ProtectedRoute>} />
-            <Route path="/lawyer-settings" element={<ProtectedRoute><LawyerSettings /></ProtectedRoute>} />
+            <Route path="/settings/security" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
+            <Route path="/lawyer-settings" element={<ProtectedRoute><Navigate to="/settings" replace /></ProtectedRoute>} />
             <Route path="/consult" element={<ProtectedRoute><AllyConsultationChat /></ProtectedRoute>} />
           </Route>
           {/* Chat Routes */}

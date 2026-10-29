@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import Section from './shared/Section';
 import InputField from './shared/InputField';
 
-const ClientSettings = ({ user }) => {
+const ClientSettings = ({ user, embedded = false }) => {
   // Initialize state from user prop
   const [profile, setProfile] = useState({
     name: user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Client',
@@ -52,7 +52,7 @@ const ClientSettings = ({ user }) => {
         setProfile({
           name: `${data.Fname} ${data.Lname}`,
           title: 'Client',
-          location: user?.location || user?.city || '',
+          location: data.location || data.city || '',
         });
         console.log('Profile data:', data);
 
@@ -280,11 +280,11 @@ const ClientSettings = ({ user }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className={embedded ? '' : 'min-h-screen bg-gray-50'}>
       {/* Main Content */}
-      <div className="flex-1 p-8">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="mb-6 text-2xl font-bold text-gray-800">Account Settings</h1>
+      <div className={embedded ? '' : 'flex-1 p-8'}>
+        <div className={embedded ? '' : 'max-w-4xl mx-auto'}>
+          {!embedded && <h1 className="mb-6 text-2xl font-bold text-gray-800">Account Settings</h1>}
 
           {/* Profile Section */}
           <Section title="My Profile">
@@ -425,7 +425,7 @@ const ClientSettings = ({ user }) => {
           </div>
 
           {/* Footer */}
-          <footer className="pt-8 mt-12 border-t border-gray-200">
+          {!embedded && <footer className="pt-8 mt-12 border-t border-gray-200">
             <div className="flex items-center justify-center mb-8">
               <div className="flex items-center space-x-3">
                 <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded">
@@ -437,7 +437,7 @@ const ClientSettings = ({ user }) => {
                 </div>
               </div>
             </div>
-          </footer>
+          </footer>}
         </div>
       </div>
     </div>
