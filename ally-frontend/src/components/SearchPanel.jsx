@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Search } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { RotateCcw, Search, SlidersHorizontal, UsersRound } from 'lucide-react';
 import { LawyerCard } from './LawyerCard';
+
+const selectClassName = 'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100';
 
 export const SearchPanel = ({
   searchQuery,
@@ -8,47 +10,28 @@ export const SearchPanel = ({
   filters,
   setFilters,
   lawyers,
+  filterOptions = [],
   onLawyerSelect,
-  totalLawyers // <-- add this prop for count
+  totalLawyers
 }) => {
-  const [specializations, setSpecializations] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [yearsOptions, setYearsOptions] = useState([]);
-  const [error, setError] = useState('');
-  const experienceRanges = [
-    { label: "All Years", value: "All Years" },
-    { label: "1-3 years", value: "1-3" },
-    { label: "4-7 years", value: "4-7" },
-    { label: "8+ years", value: "8+" }
-  ];
-  const casesHandledRanges = [
-    { label: "All Cases", value: "All Cases" },
-    { label: "1-10 cases", value: "1-10" },
-    { label: "11-50 cases", value: "11-50" },
-    { label: "51+ cases", value: "51+" }
-  ];
+  const specializations = useMemo(() => [...new Set(
+    filterOptions.flatMap(lawyer => String(lawyer.specialty || '')
+      .split(',')
+      .map(value => value.trim())
+      .filter(value => value && value !== 'Not specified'))
+  )].sort(), [filterOptions]);
 
-  // Extract unique specializations, locations, and years of experience for dropdowns
-  useEffect(() => {
-    if (lawyers && lawyers.length > 0) {
-      const specs = [...new Set(lawyers.map(lawyer => lawyer.specialty).filter(Boolean))];
-      setSpecializations(specs);
+  const locations = useMemo(() => [...new Set(
+    filterOptions.map(lawyer => lawyer.location).filter(Boolean)
+  )].sort(), [filterOptions]);
 
-      const locs = [...new Set(lawyers.map(lawyer => lawyer.location).filter(Boolean))];
-      setLocations(locs);
+  const activeFilterCount = [
+    filters.specialty !== 'All Specialties',
+    Boolean(filters.location && filters.location !== 'All Locations'),
+    filters.experience !== 'All Years',
+    filters.casesHandled !== 'All Cases'
+  ].filter(Boolean).length;
 
-      const years = [
-        ...new Set(
-          lawyers
-            .map(lawyer => lawyer.experience)
-            .filter(val => val !== undefined && val !== null && val !== '')
-        ),
-      ].sort((a, b) => a - b);
-      setYearsOptions(years);
-    }
-  }, [lawyers]);
-
-  // Reset filters
   const resetFilters = () => {
     setSearchQuery('');
     setFilters({
@@ -57,145 +40,133 @@ export const SearchPanel = ({
       experience: 'All Years',
       availability: 'Any Day',
       casesHandled: 'All Cases',
+      rating: 'Any Rating'
     });
   };
 
   return (
-    <div className="p-6 bg-white shadow-sm rounded-xl">
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <input
+              type="search"
+              placeholder="Search by lawyer, specialty, or location"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 sm:text-base"
+              value={searchQuery}
+              onChange={event => setSearchQuery(event.target.value)}
+              aria-label="Search lawyers"
+            />
+          </div>
 
-      {error && (
-        <div className="p-4 mb-4 border border-red-200 rounded-lg bg-red-50">
-          <p className="text-sm text-red-600">Error: {error}</p>
+          <div className="flex items-center justify-between gap-3 xl:justify-end">
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
+              <UsersRound className="h-4 w-4" aria-hidden="true" />
+              {totalLawyers} match{totalLawyers === 1 ? '' : 'es'}
+            </div>
+            {(activeFilterCount > 0 || searchQuery) && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                Clear all
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5 border-t border-slate-100 pt-5">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <SlidersHorizontal className="h-4 w-4 text-blue-600" aria-hidden="true" />
+            Refine results
+            {activeFilterCount > 0 && (
+              <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs text-white">{activeFilterCount}</span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Specialty
+              <select
+                className={selectClassName}
+                value={filters.specialty}
+                onChange={event => setFilters({ ...filters, specialty: event.target.value })}
+              >
+                <option value="All Specialties">All specialties</option>
+                {specializations.map(specialty => <option key={specialty} value={specialty}>{specialty}</option>)}
+              </select>
+            </label>
+
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Location
+              <select
+                className={selectClassName}
+                value={filters.location || 'All Locations'}
+                onChange={event => setFilters({ ...filters, location: event.target.value })}
+              >
+                <option value="All Locations">All locations</option>
+                {locations.map(location => <option key={location} value={location}>{location}</option>)}
+              </select>
+            </label>
+
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Experience
+              <select
+                className={selectClassName}
+                value={filters.experience || 'All Years'}
+                onChange={event => setFilters({ ...filters, experience: event.target.value })}
+              >
+                <option value="All Years">Any experience</option>
+                <option value="1-3">1–3 years</option>
+                <option value="4-7">4–7 years</option>
+                <option value="8+">8+ years</option>
+              </select>
+            </label>
+
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Cases handled
+              <select
+                className={selectClassName}
+                value={filters.casesHandled || 'All Cases'}
+                onChange={event => setFilters({ ...filters, casesHandled: event.target.value })}
+              >
+                <option value="All Cases">Any number</option>
+                <option value="1-10">1–10 cases</option>
+                <option value="11-50">11–50 cases</option>
+                <option value="51+">51+ cases</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      {lawyers.length === 0 ? (
+        <section className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+            <Search className="h-6 w-6 text-slate-500" aria-hidden="true" />
+          </div>
+          <h2 className="mt-4 text-lg font-bold text-slate-900">No matching lawyers found</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
+            Try a broader search or clear your filters to view all verified lawyers.
+          </p>
           <button
-            onClick={() => window.location.reload()}
-            className="text-sm text-red-600 underline hover:text-red-800"
+            type="button"
+            onClick={resetFilters}
+            className="mt-5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
           >
-            Retry
+            View all lawyers
           </button>
+        </section>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {lawyers.map(lawyer => (
+            <LawyerCard key={lawyer.id} lawyer={lawyer} onClick={onLawyerSelect} />
+          ))}
         </div>
       )}
-
-      <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-end">
-        <div className="relative flex-1">
-          <Search className="absolute w-4 h-4 text-gray-400 left-3 top-3" />
-          <input
-            type="text"
-            placeholder="Search by name, specialty, or location"
-            className="w-full py-2 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center justify-end">
-          <button
-            className="px-4 py-2 font-medium text-white transition-colors bg-blue-600 rounded-lg hover:bg-blue-700"
-            onClick={resetFilters}
-          >
-            Reset Filters
-          </button>
-        </div>
-      </div>
-
-      <div className="mb-6">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-700">Specialty</label>
-            <select
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              value={filters.specialty}
-              onChange={(e) => setFilters({ ...filters, specialty: e.target.value })}
-            >
-              <option value="All Specialties">All Specialties</option>
-              <option value="familyLaw">Family Law</option>
-              <option value="realEstate">Real Estate</option>
-              <option value="businessLaw">Business Law</option>
-              <option value="estatePlanning">Estate Planning</option>
-              <option value="criminalDefense">Criminal Defense</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-700">Location</label>
-            <select
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              value={filters.location}
-              onChange={(e) => setFilters({ ...filters, location: e.target.value })}
-            >
-              <option value="All Locations">All Locations</option>
-              {locations.map((location, index) => (
-                <option key={index} value={location}>{location}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-700">Experience</label>
-            <select
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              value={filters.experience || 'All Years'}
-              onChange={(e) => setFilters({ ...filters, experience: e.target.value })}
-            >
-              {experienceRanges.map((range) => (
-                <option key={range.value} value={range.value}>{range.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-700">Availability</label>
-            <select
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              value={filters.availability}
-              onChange={(e) => setFilters({ ...filters, availability: e.target.value })}
-            >
-              <option>Any Day</option>
-              <option>Weekdays</option>
-              <option>Weekends</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block mb-1 text-sm font-medium text-gray-700">Cases Handled</label>
-            <select
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              value={filters.casesHandled || 'All Cases'}
-              onChange={(e) => setFilters({ ...filters, casesHandled: e.target.value })}
-            >
-              {casesHandledRanges.map((range) => (
-                <option key={range.value} value={range.value}>{range.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="mt-3 text-sm text-gray-600">
-          Showing {totalLawyers} lawyer{totalLawyers !== 1 ? 's' : ''}
-        </div>
-      </div>
-
-      {/* Lawyers list */}
-      <div>
-        {lawyers.length === 0 ? (
-          <div className="py-8 text-center">
-            <p className="text-gray-600">No lawyers found matching your criteria.</p>
-            <button
-              onClick={resetFilters}
-              className="mt-2 text-blue-600 underline hover:text-blue-800"
-            >
-              Reset filters to see all lawyers
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {lawyers.map((lawyer) => (
-              <LawyerCard
-                key={lawyer.id}
-                lawyer={lawyer}
-                onClick={onLawyerSelect}
-              />
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 };

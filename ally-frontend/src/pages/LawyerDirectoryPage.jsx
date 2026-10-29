@@ -1,221 +1,335 @@
-import React, { useState, useEffect } from 'react';
-import { SearchPanel } from '../components/SearchPanel';
-import { LawyerProfile } from '../components/LawyerProfile';
-import { adminService } from '../services/adminService';
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Scale,
+  UsersRound,
+} from "lucide-react";
+import { SearchPanel } from "../components/SearchPanel";
+import { LawyerProfile } from "../components/LawyerProfile";
+import { adminService } from "../services/adminService";
+
+const lawyerIsVerified = (lawyer) =>
+  Boolean(
+    lawyer?.raw?.credentialsVerified ||
+    ["approved", "verified"].includes(
+      String(
+        lawyer?.raw?.status || lawyer?.raw?.verificationStatus || "",
+      ).toLowerCase(),
+    ),
+  );
+
+const numericExperience = (value) =>
+  Number(typeof value === "string" ? value.replace(/\D/g, "") : value) || 0;
 
 export const LawyerDirectoryPage = () => {
-  // activeView removed; always show search view
   const [selectedLawyer, setSelectedLawyer] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState({
-    specialty: 'All Specialties',
-    location: '',
-    experience: 'All Years',
-    availability: 'Any Day',
-    casesHandled: 'All Cases',
-    rating: 'Any Rating'
+    specialty: "All Specialties",
+    location: "All Locations",
+    experience: "All Years",
+    availability: "Any Day",
+    casesHandled: "All Cases",
+    rating: "Any Rating",
   });
   const [fetchedLawyers, setFetchedLawyers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Pagination state
+  const [reloadKey, setReloadKey] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const lawyersPerPage = 8;
 
-  // Filtering logic moved here
-  const filteredLawyers = fetchedLawyers.filter(lawyer => {
-    // Exclude pending lawyers
-    if (lawyer?.raw?.status === 'pending' || lawyer?.raw?.verificationStatus === 'pending') {
-      return false;
-    }
-    // Search query
-    if (searchQuery && searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      if (
-        !(
-          lawyer.name?.toLowerCase().includes(query) ||
-          lawyer.specialty?.toLowerCase().includes(query) ||
-          lawyer.location?.toLowerCase().includes(query) ||
-          (lawyer.experience && lawyer.experience.toString().includes(query))
-        )
-      ) return false;
-    }
-    // Specialty
-    if (filters.specialty && filters.specialty !== 'All Specialties' && !lawyer.specialty?.includes(filters.specialty)) return false;
-    // Location
-    if (filters.location && filters.location !== 'All Locations' && filters.location !== '' && !lawyer.location?.includes(filters.location)) return false;
-    // Years of experience
-    if (filters.experience && filters.experience !== 'All Years') {
-      const years = Number(
-        typeof lawyer.experience === 'string'
-          ? lawyer.experience.replace(/\D/g, '')
-          : lawyer.experience
-      );
-      if (filters.experience === '1-3' && !(years >= 1 && years <= 3)) return false;
-      if (filters.experience === '4-7' && !(years >= 4 && years <= 7)) return false;
-      if (filters.experience === '8+' && !(years >= 8)) return false;
-    }
-    // Cases handled
-    if (filters.casesHandled && filters.casesHandled !== 'All Cases') {
-      const cases = Number(lawyer.casesHandled);
-      if (filters.casesHandled === '1-10' && !(cases >= 1 && cases <= 10)) return false;
-      if (filters.casesHandled === '11-50' && !(cases >= 11 && cases <= 50)) return false;
-      if (filters.casesHandled === '51+' && !(cases >= 51)) return false;
-    }
-    // Availability (if you have logic for this, add here)
-    return true;
-  });
-
-  // Sort by cases handled, then experience (descending)
-  filteredLawyers.sort((a, b) => {
-    const aCases = Number(a.casesHandled) || 0;
-    const bCases = Number(b.casesHandled) || 0;
-    if (bCases !== aCases) {
-      return bCases - aCases;
-    }
-    const aYears = Number(typeof a.experience === 'string' ? a.experience.replace(/\D/g, '') : a.experience) || 0;
-    const bYears = Number(typeof b.experience === 'string' ? b.experience.replace(/\D/g, '') : b.experience) || 0;
-    return bYears - aYears;
-  });
-
-  // Paginate the filtered lawyers
-  const totalPages = Math.ceil(filteredLawyers.length / lawyersPerPage);
-  const paginatedLawyers = filteredLawyers.slice(
-    (currentPage - 1) * lawyersPerPage,
-    currentPage * lawyersPerPage
-  );
-
   useEffect(() => {
+    let active = true;
+
     const fetchLawyers = async () => {
       try {
         setLoading(true);
-        // Use adminService which aggregates verified and unverified lawyers
-        const data = await adminService.getAllLawyers();
-
-        const transformedData = data.map(lawyer => ({
-          id: lawyer.userId || lawyer.id,
-          name: `${lawyer.Fname || lawyer.firstName || lawyer.fname || ''} ${lawyer.Lname || lawyer.lastName || lawyer.lname || ''}`.trim(),
-          specialty: lawyer.specialization && lawyer.specialization.length > 0 ? (Array.isArray(lawyer.specialization) ? lawyer.specialization.join(', ') : lawyer.specialization) : 'Not specified',
-          location: [lawyer.city, lawyer.province].filter(Boolean).join(', '),
-          rating: lawyer.rating || 0,
-          experience: lawyer.experience ? (typeof lawyer.experience === 'string' && lawyer.experience.includes('year') ? lawyer.experience : `${lawyer.experience} years`) : 'N/A',
-          fee: lawyer.consultationFee ? `₱${lawyer.consultationFee}/hour` : (lawyer.fee || 'N/A'),
-          image: `${(lawyer.Fname || lawyer.firstName || lawyer.fname || '').charAt(0) || ''}${(lawyer.Lname || lawyer.lastName || lawyer.lname || '').charAt(0) || ''}`.toUpperCase(),
-          profilePhotoUrl: lawyer.profilePhotoUrl || lawyer.profilePhoto || null,
-          about: lawyer.bio || lawyer.about || 'No biography available.',
-          education: lawyer.educationInstitution || lawyer.education || 'Not specified',
-          areas: lawyer.specialization || lawyer.practiceAreas || [],
-          casesHandled: lawyer.casesHandled || lawyer.casesHandled || 0,
-          raw: lawyer
-        }));
-
-        setFetchedLawyers(transformedData);
         setError(null);
-      } catch (err) {
-        setError(err.message || 'Failed to fetch lawyers');
+        const data = await adminService.getAllLawyers();
+        if (!active) return;
+
+        setFetchedLawyers(
+          data.map((lawyer) => {
+            const firstName =
+              lawyer.Fname || lawyer.firstName || lawyer.fname || "";
+            const lastName =
+              lawyer.Lname || lawyer.lastName || lawyer.lname || "";
+            const specialization =
+              lawyer.specialization || lawyer.practiceAreas || [];
+
+            return {
+              id: lawyer.userId || lawyer.id,
+              name: `${firstName} ${lastName}`.trim(),
+              specialty: Array.isArray(specialization)
+                ? specialization.filter(Boolean).join(", ") || "Not specified"
+                : specialization || "Not specified",
+              location: [lawyer.city, lawyer.province]
+                .filter(Boolean)
+                .join(", "),
+              rating: lawyer.rating || 0,
+              experience: lawyer.experience
+                ? typeof lawyer.experience === "string" &&
+                  lawyer.experience.includes("year")
+                  ? lawyer.experience
+                  : `${lawyer.experience} years`
+                : "Not listed",
+              fee: lawyer.consultationFee
+                ? `₱${lawyer.consultationFee}/hour`
+                : lawyer.fee || "Not listed",
+              image:
+                `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() ||
+                "L",
+              profilePhotoUrl:
+                lawyer.profilePhotoUrl || lawyer.profilePhoto || null,
+              about:
+                lawyer.bio ||
+                lawyer.about ||
+                "Legal professional available to discuss your case and explain possible next steps.",
+              education:
+                lawyer.educationInstitution ||
+                lawyer.education ||
+                "Not specified",
+              areas: Array.isArray(specialization)
+                ? specialization
+                : String(specialization)
+                    .split(",")
+                    .map((value) => value.trim())
+                    .filter(Boolean),
+              casesHandled: lawyer.casesHandled || 0,
+              raw: lawyer,
+            };
+          }),
+        );
+      } catch (fetchError) {
+        if (!active) return;
+        setError(fetchError.message || "Failed to fetch lawyers");
         setFetchedLawyers([]);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
+
     fetchLawyers();
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [reloadKey]);
 
-  const handleLawyerSelect = (lawyer) => {
-    setSelectedLawyer(lawyer);
-  };
+  const verifiedLawyers = useMemo(
+    () => fetchedLawyers.filter(lawyerIsVerified),
+    [fetchedLawyers],
+  );
 
-  // Reset to page 1 if filters/search change or lawyers list changes
+  const filteredLawyers = useMemo(
+    () =>
+      verifiedLawyers
+        .filter((lawyer) => {
+          const query = searchQuery.trim().toLowerCase();
+          if (
+            query &&
+            ![lawyer.name, lawyer.specialty, lawyer.location, lawyer.experience]
+              .filter(Boolean)
+              .some((value) => String(value).toLowerCase().includes(query))
+          )
+            return false;
+
+          if (
+            filters.specialty !== "All Specialties" &&
+            !lawyer.specialty
+              .toLowerCase()
+              .includes(filters.specialty.toLowerCase())
+          )
+            return false;
+
+          if (
+            filters.location &&
+            filters.location !== "All Locations" &&
+            !lawyer.location
+              .toLowerCase()
+              .includes(filters.location.toLowerCase())
+          )
+            return false;
+
+          const years = numericExperience(lawyer.experience);
+          if (filters.experience === "1-3" && !(years >= 1 && years <= 3))
+            return false;
+          if (filters.experience === "4-7" && !(years >= 4 && years <= 7))
+            return false;
+          if (filters.experience === "8+" && years < 8) return false;
+
+          const cases = Number(lawyer.casesHandled) || 0;
+          if (filters.casesHandled === "1-10" && !(cases >= 1 && cases <= 10))
+            return false;
+          if (filters.casesHandled === "11-50" && !(cases >= 11 && cases <= 50))
+            return false;
+          if (filters.casesHandled === "51+" && cases < 51) return false;
+
+          return true;
+        })
+        .sort(
+          (first, second) =>
+            (Number(second.casesHandled) || 0) -
+              (Number(first.casesHandled) || 0) ||
+            numericExperience(second.experience) -
+              numericExperience(first.experience),
+        ),
+    [filters, searchQuery, verifiedLawyers],
+  );
+
+  const totalPages = Math.ceil(filteredLawyers.length / lawyersPerPage);
+  const paginatedLawyers = filteredLawyers.slice(
+    (currentPage - 1) * lawyersPerPage,
+    currentPage * lawyersPerPage,
+  );
+
+  const specialtyCount = useMemo(
+    () =>
+      new Set(verifiedLawyers.flatMap((lawyer) => lawyer.areas).filter(Boolean))
+        .size,
+    [verifiedLawyers],
+  );
+
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filters, fetchedLawyers.length]);
+  }, [searchQuery, filters, verifiedLawyers.length]);
 
   return (
-    <div className="space-y-4">
+    <div className="min-h-full bg-slate-50/70 pb-12">
       {selectedLawyer && (
-        <LawyerProfile 
+        <LawyerProfile
           lawyer={selectedLawyer}
           onClose={() => setSelectedLawyer(null)}
         />
       )}
 
-      <div className="container max-w-6xl px-4 py-8 mx-auto">        
-        <div className="p-4 bg-white shadow-sm sm:p-6 md:p-8 rounded-xl">
-          <h1 className="mb-2 text-xl font-bold text-gray-900 sm:mb-3 sm:text-2xl">Find the Right Lawyer for Your Case</h1>
-          <p className="mb-6 text-sm text-gray-600 sm:mb-8 sm:text-base">Search our network of verified legal professionals and submit your case to get started with legal assistance</p>
-          
-          {loading && (
-            <div className="flex items-center justify-center py-20">
-              <div className="text-center">
-                <svg className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
-                </svg>
-                <p className="text-gray-600">Loading lawyers...</p>
-              </div>
+      <section className="border-b border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 text-slate-950">
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-blue-800 ring-1 ring-inset ring-blue-200">
+              <Scale className="h-4 w-4" aria-hidden="true" />
+              Verified legal professionals
             </div>
-          )}
+            <h1 className="mt-5 text-3xl font-bold tracking-tight text-blue-950 sm:text-4xl">
+              Find the right lawyer for your case
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
+              Compare verified lawyers by practice area, location, and
+              experience, then review a profile before making contact.
+            </p>
 
-          {error && (
-            <div className="p-6 mb-6 border border-red-200 rounded-lg bg-red-50">
-              <div className="flex items-center">
-                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z" />
-                </svg>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">Error loading lawyers</h3>
-                  <div className="mt-2 text-sm text-red-700">
-                    <p>{error}</p>
-                  </div>
+            {!loading && !error && (
+              <div className="mt-7 flex flex-wrap gap-3">
+                <div className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm ring-1 ring-inset ring-blue-200">
+                  <UsersRound className="h-4 w-4" aria-hidden="true" />
+                  {verifiedLawyers.length} verified lawyer
+                  {verifiedLawyers.length === 1 ? "" : "s"}
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm ring-1 ring-inset ring-blue-200">
+                  <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                  {specialtyCount} practice area
+                  {specialtyCount === 1 ? "" : "s"}
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        </div>
+      </section>
 
-          {!loading && !error && (
-            <div className="transition-opacity duration-200 ease-in-out">
-              <SearchPanel 
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                filters={filters}
-                setFilters={setFilters}
-                lawyers={paginatedLawyers}
-                onLawyerSelect={handleLawyerSelect}
-                totalLawyers={filteredLawyers.length}
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        {loading && (
+          <div aria-label="Loading lawyers" className="space-y-6">
+            <div className="h-44 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div
+                  key={index}
+                  className="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!loading && error && (
+          <section className="rounded-2xl border border-red-200 bg-white p-8 text-center shadow-sm">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+              <AlertCircle
+                className="h-6 w-6 text-red-600"
+                aria-hidden="true"
               />
             </div>
-          )}
-          {/* Pagination Controls */}
-          {!loading && !error && totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-8">
-              <button
-                className="px-3 py-1 text-gray-700 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
+            <h2 className="mt-4 text-lg font-bold text-slate-900">
+              We couldn’t load the lawyer directory
+            </h2>
+            <p className="mt-2 text-sm text-slate-600">{error}</p>
+            <button
+              type="button"
+              onClick={() => setReloadKey((value) => value + 1)}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-700"
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Try again
+            </button>
+          </section>
+        )}
+
+        {!loading && !error && (
+          <>
+            <SearchPanel
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              filters={filters}
+              setFilters={setFilters}
+              lawyers={paginatedLawyers}
+              filterOptions={verifiedLawyers}
+              onLawyerSelect={setSelectedLawyer}
+              totalLawyers={filteredLawyers.length}
+            />
+
+            {totalPages > 1 && (
+              <nav
+                className="mt-8 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                aria-label="Lawyer directory pages"
               >
-                Previous
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => (
                 <button
-                  key={i}
-                  className={`px-3 py-1 rounded ${currentPage === i + 1 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                  onClick={() => setCurrentPage(i + 1)}
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
+                  disabled={currentPage === 1}
+                  className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {i + 1}
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">Previous</span>
                 </button>
-              ))}
-              <button
-                className="px-3 py-1 text-gray-700 bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+                <p className="text-sm font-medium text-slate-600">
+                  Page{" "}
+                  <span className="font-bold text-slate-950">
+                    {currentPage}
+                  </span>{" "}
+                  of {totalPages}
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </nav>
+            )}
+          </>
+        )}
+      </main>
     </div>
   );
 };

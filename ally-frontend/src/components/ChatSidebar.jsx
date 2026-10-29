@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { MessageSquarePlus, Folder, Calendar, UserSearch, MessageCircle, Settings, LogOut, ChevronLeft, ChevronRight, ChevronsUpDown, User, Shield, X, Menu, BriefcaseBusiness } from 'lucide-react';
+import { MessageSquarePlus, Folder, Calendar, UserSearch, MessageCircle, Settings, LogOut, ChevronLeft, ChevronRight, X, Menu, BriefcaseBusiness } from 'lucide-react';
 import { useSidebar } from '../contexts/SidebarContext';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
 import { getAuthData } from '../utils/auth.jsx';
 
 const ChatSidebar = () => {
@@ -11,21 +10,12 @@ const ChatSidebar = () => {
   const { isExpanded, toggleSidebar } = useSidebar();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   
-  // Auto-expand settings if user is on a settings page
   const isOnSettingsPage = location.pathname.startsWith('/settings');
-  const [settingsExpanded, setSettingsExpanded] = useState(isOnSettingsPage);
 
   // Close mobile sidebar when navigating
   useEffect(() => {
     setIsMobileOpen(false);
   }, [location.pathname]);
-
-  // Keep settings expanded if navigating to settings routes
-  useEffect(() => {
-    if (isOnSettingsPage) {
-      setSettingsExpanded(true);
-    }
-  }, [isOnSettingsPage]);
 
   const navigationItems = [
     { name: 'New Chat', path: '/', icon: MessageSquarePlus, action: 'newChat' },
@@ -145,87 +135,18 @@ const ChatSidebar = () => {
             );
           })}
 
-        {/* Settings - Collapsible on desktop, regular items on mobile */}
-        {/* Mobile: Show Profile and Security as regular menu items */}
-        {isExpanded && (
-          <div className="space-y-1 md:hidden">
-            <button
-              onClick={() => navigate('/settings')}
-              className={`w-full flex items-center gap-3 px-3 py-3.5 rounded-[8px] text-base font-medium transition-all duration-200 ${
-                location.pathname === '/settings'
-                  ? 'bg-[#1A6EFF] text-white'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <User className="flex-shrink-0 w-5 h-5" />
-              <span>Profile</span>
-            </button>
-            <button
-              onClick={() => navigate('/settings/security')}
-              className={`w-full flex items-center gap-3 px-3 py-3.5 rounded-[8px] text-base font-medium transition-all duration-200 ${
-                location.pathname === '/settings/security'
-                  ? 'bg-[#1A6EFF] text-white'
-                  : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <Shield className="flex-shrink-0 w-5 h-5" />
-              <span>Security</span>
-            </button>
-          </div>
-        )}
-
-        {/* Desktop: Collapsible Settings menu */}
-        <div className="hidden md:block">
-          <Collapsible open={settingsExpanded} onOpenChange={setSettingsExpanded}>
-            <CollapsibleTrigger asChild>
-              <button
-                onClick={() => {
-                  if (!isExpanded) {
-                    navigate('/settings');
-                  }
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-3.5 rounded-[8px] text-base font-medium transition-all duration-200 text-gray-700 hover:bg-gray-100 ${!isExpanded ? 'justify-center' : 'justify-between'}`}
-                title={!isExpanded ? 'Settings' : ''}
-              >
-                <div className="flex items-center gap-3">
-                  <Settings className="flex-shrink-0 w-5 h-5 text-gray-500" />
-                  {isExpanded && <span>Settings</span>}
-                </div>
-                {isExpanded && (
-                  <ChevronsUpDown className="w-4 h-4 text-gray-500" />
-                )}
-              </button>
-            </CollapsibleTrigger>
-            
-            {/* Settings Submenu */}
-            {isExpanded && (
-              <CollapsibleContent className="space-y-1">
-                <button
-                  onClick={() => navigate('/settings')}
-                  className={`w-full mt-2 flex items-center gap-3 pl-12 pr-3 py-3.5 rounded-[8px] text-base font-medium transition-all duration-200 ${
-                    location.pathname === '/settings'
-                      ? 'bg-[#1A6EFF] text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  <User className="flex-shrink-0 w-5 h-5" />
-                  <span>Profile</span>
-                </button>
-                <button
-                  onClick={() => navigate('/settings/security')}
-                  className={`w-full flex items-center gap-3 pl-12 pr-3 py-3.5 rounded-[8px] text-base font-medium transition-all duration-200 ${
-                    location.pathname === '/settings/security'
-                      ? 'bg-[#1A6EFF] text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  <Shield className="flex-shrink-0 w-5 h-5" />
-                  <span>Security</span>
-                </button>
-              </CollapsibleContent>
-            )}
-          </Collapsible>
-        </div>
+        <button
+          onClick={() => navigate('/settings')}
+          className={`w-full flex items-center gap-3 px-3 py-3.5 rounded-[8px] text-base font-medium transition-all duration-200 ${
+            isOnSettingsPage
+              ? 'bg-[#1A6EFF] text-white'
+              : 'text-gray-700 hover:bg-gray-100'
+          } ${!isExpanded ? 'justify-center' : ''}`}
+          title={!isExpanded ? 'Settings' : ''}
+        >
+          <Settings className={`flex-shrink-0 w-5 h-5 ${isOnSettingsPage ? 'text-white' : 'text-gray-500'}`} />
+          {isExpanded && <span>Settings</span>}
+        </button>
       </nav>
 
       </div>
