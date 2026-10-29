@@ -19,8 +19,10 @@ from typing import List, Optional
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone
 import os
+import logging
 import math
 import secrets
+import time
 import retrieval_ranking
 import retrieval_catalog
 import unicodedata
@@ -38,6 +40,8 @@ app = FastAPI(
     description="RAG with DeepSeek Classification",
     version="7.0.0"
 )
+
+logger = logging.getLogger("uvicorn.error")
 
 @app.get("/ping")
 async def ping():
@@ -487,6 +491,10 @@ def relevant_candidates(query, candidates, cutoff):
 
 @app.post("/search")
 def search_cases(request: SearchRequest):
+    if os.getenv("LOCAL_DEV", "").strip().lower() == "true":
+        logger.info("RAG /search received: top_k=%d query=%r", request.top_k, request.query[:200])
+    else:
+        logger.info("RAG /search received: top_k=%d", request.top_k)
     if request.diagnostics:
         raise HTTPException(403, "Diagnostics are not available through this endpoint.")
     return _search_cases(request)
@@ -511,19 +519,38 @@ def _search_cases(request: SearchRequest):
         response.update(rejected=True, rejection_stage="deepseek_filter", rejection_reason=reason)
         return response
     try:
+        search_started = time.perf_counter()
         vector = embedding_model.encode(request.query, normalize_embeddings=True).tolist()
         if len(vector) != 384:
             raise HTTPException(503, "Case retrieval unavailable: query dimension must be 384.")
-        options = dict(vector=vector, top_k=100, include_metadata=True)
+        result_limit = min(request.top_k, 3)
+        configured_pool = int(os.getenv("RAG_CANDIDATE_POOL", "3"))
+        candidate_pool = max(result_limit, min(configured_pool, 25))
+        pinecone_timeout = max(1.0, min(float(os.getenv("PINECONE_QUERY_TIMEOUT", "20")), 25.0))
+        options = dict(
+            vector=vector,
+            top_k=candidate_pool,
+            include_metadata=True,
+            timeout=pinecone_timeout,
+        )
         namespace = os.getenv("PINECONE_NAMESPACE")
         if namespace:
             options["namespace"] = namespace
         results = pinecone_index.query(**options)
-        candidates = list(results.get("matches", []))[:100]
+        candidates = list(results.get("matches", []))[:candidate_pool]
+        logger.info(
+            "RAG Pinecone query completed: candidates=%d elapsed=%.2fs",
+            len(candidates),
+            time.perf_counter() - search_started,
+        )
         raw_candidates = list(candidates)
         identities = retrieval_catalog.candidates(request.query, namespace or "")
         if identities:
-            fetched = pinecone_index.fetch(ids=[r["id"] for r in identities], namespace=namespace or "")
+            fetched = pinecone_index.fetch(
+                ids=[r["id"] for r in identities],
+                namespace=namespace or "",
+                timeout=pinecone_timeout,
+            )
             fetched = fetched.to_dict() if hasattr(fetched, "to_dict") else fetched
             known = {r["id"]: r for r in identities}
             for identifier, row in fetched.get("vectors", {}).items():
@@ -569,7 +596,7 @@ def _search_cases(request: SearchRequest):
                 stage="retrieval", classification_accepted=True,
                 index=os.getenv("PINECONE_INDEX_NAME"), namespace=namespace or "",
                 model=os.getenv("EMBEDDING_MODEL"), dimension=len(vector),
-                semantic_cutoff=0.54, combined_cutoff=cutoff, candidate_pool=100,
+                semantic_cutoff=0.54, combined_cutoff=cutoff, candidate_pool=candidate_pool,
                 raw_candidate_count=len(raw_candidates), identity_candidates_count=len(identities),
                 candidates=retrieval_ranking.safe_diagnostics(raw_candidates, trace))
         return retrieval_response(request.query, cases, max((m["score"] for m in matches), default=0.0), **extra)

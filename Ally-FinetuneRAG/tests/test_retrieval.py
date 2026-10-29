@@ -76,4 +76,17 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("secret", response.text)
 
+    def test_pinecone_query_has_bounded_pool_and_timeout(self):
+        with patch.dict(os.environ, {
+            "RAG_CANDIDATE_POOL": "8",
+            "PINECONE_QUERY_TIMEOUT": "12",
+        }):
+            response = self.search([])
+
+        self.assertEqual(response.status_code, 200)
+        query_options = main.pinecone_index.query.call_args.kwargs
+        self.assertEqual(query_options["top_k"], 8)
+        self.assertEqual(query_options["timeout"], 12.0)
+        self.assertTrue(query_options["include_metadata"])
+
 if __name__ == "__main__": unittest.main()
