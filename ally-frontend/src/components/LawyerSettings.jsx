@@ -8,7 +8,7 @@ import NavigationBar from './NavigationBar';
 import { Button } from 'react-day-picker';
 
 // Accept user prop from AccountSettings
-const LawyerSettings = ({ user }) => {
+const LawyerSettings = ({ user, embedded = false }) => {
   const profilePhoto = localStorage.getItem('profilePhoto');
   const token = localStorage.getItem('token');
 
@@ -419,8 +419,8 @@ const LawyerSettings = ({ user }) => {
   if (loading) {
     return (
       <>
-        <NavigationBar />
-        <div className="min-h-screen pt-16 sm:pt-20 bg-gray-50">
+        {!embedded && <NavigationBar />}
+        <div className={embedded ? '' : 'min-h-screen pt-16 sm:pt-20 bg-gray-50'}>
           <div className="flex items-center justify-center py-20">
             <svg className="w-8 h-8 text-blue-600 animate-spin" fill="none" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -436,8 +436,8 @@ const LawyerSettings = ({ user }) => {
   if (error) {
     return (
       <>
-        <NavigationBar />
-        <div className="min-h-screen pt-16 sm:pt-20 bg-gray-50">
+        {!embedded && <NavigationBar />}
+        <div className={embedded ? '' : 'min-h-screen pt-16 sm:pt-20 bg-gray-50'}>
           <div className="container max-w-5xl px-4 py-8 mx-auto">
             <div className="p-6 border border-red-200 rounded-lg bg-red-50">
               <div className="flex items-center">
@@ -460,9 +460,9 @@ const LawyerSettings = ({ user }) => {
 
   return (
     <>
-      <NavigationBar />
-      <div className="w-full max-w-4xl p-8 pt-16 mx-auto">
-        <h1 className="mb-6 text-2xl font-bold text-gray-800">Account Settings</h1>
+      {!embedded && <NavigationBar />}
+      <div className={embedded ? 'w-full' : 'w-full max-w-4xl p-8 pt-16 mx-auto'}>
+        {!embedded && <h1 className="mb-6 text-2xl font-bold text-gray-800">Account Settings</h1>}
 
         {/* Profile Section */}
         <Section title="My Profile">
@@ -473,10 +473,10 @@ const LawyerSettings = ({ user }) => {
                 onMouseEnter={() => setIsHoveringPhoto(true)}
                 onMouseLeave={() => setIsHoveringPhoto(false)}
               >
-                {profilePhoto ? (
+                {currentProfilePhoto ? (
                   <>
                     <img
-                      src={profilePhoto}
+                      src={currentProfilePhoto}
                       alt="Profile"
                       className="object-cover w-full h-full"
                     />
@@ -651,7 +651,7 @@ const LawyerSettings = ({ user }) => {
         </div>
 
         {/* Footer */}
-        <footer className="pt-8 mt-12 border-t border-gray-200">
+        {!embedded && <footer className="pt-8 mt-12 border-t border-gray-200">
           <div className="flex items-center justify-center mb-8">
             <div className="flex items-center space-x-3">
               <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded">
@@ -665,7 +665,7 @@ const LawyerSettings = ({ user }) => {
               </div>
             </div>
           </div>
-        </footer>
+        </footer>}
       </div>
     </>
   );

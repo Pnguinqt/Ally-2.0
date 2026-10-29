@@ -207,6 +207,7 @@ export const LawyerDirectoryPage = () => {
         />
       )}
 
+<<<<<<< HEAD
       <section className="border-b border-blue-100 bg-gradient-to-br from-blue-700 via-blue-600 to-blue-500 text-white">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
           <div className="max-w-3xl">
@@ -218,18 +219,39 @@ export const LawyerDirectoryPage = () => {
               Find the right lawyer for your case
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-50 sm:text-base sm:leading-7">
+=======
+      <section className="border-b border-blue-200 bg-gradient-to-br from-blue-50 via-white to-sky-50 text-slate-950">
+        <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-blue-800 ring-1 ring-inset ring-blue-200">
+              <Scale className="h-4 w-4" aria-hidden="true" />
+              Verified legal professionals
+            </div>
+            <h1 className="mt-5 text-3xl font-bold tracking-tight text-blue-950 sm:text-4xl">
+              Find the right lawyer for your case
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base sm:leading-7">
+>>>>>>> d3dcdab09db7dc025aee99daa555308cb9fffec6
               Compare verified lawyers by practice area, location, and
               experience, then review a profile before making contact.
             </p>
 
             {!loading && !error && (
               <div className="mt-7 flex flex-wrap gap-3">
+<<<<<<< HEAD
                 <div className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold ring-1 ring-inset ring-white/20">
+=======
+                <div className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm ring-1 ring-inset ring-blue-200">
+>>>>>>> d3dcdab09db7dc025aee99daa555308cb9fffec6
                   <UsersRound className="h-4 w-4" aria-hidden="true" />
                   {verifiedLawyers.length} verified lawyer
                   {verifiedLawyers.length === 1 ? "" : "s"}
                 </div>
+<<<<<<< HEAD
                 <div className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold ring-1 ring-inset ring-white/20">
+=======
+                <div className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm ring-1 ring-inset ring-blue-200">
+>>>>>>> d3dcdab09db7dc025aee99daa555308cb9fffec6
                   <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                   {specialtyCount} practice area
                   {specialtyCount === 1 ? "" : "s"}

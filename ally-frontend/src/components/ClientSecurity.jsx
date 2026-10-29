@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import Section from './shared/Section';
 import InputField from './shared/InputField';
 
-const ClientSecurity = () => {
+const ClientSecurity = ({ embedded = false }) => {
   const token = localStorage.getItem('token');
 
   // Password change states
@@ -79,8 +79,8 @@ const ClientSecurity = () => {
   };
 
   return (
-    <div className="container max-w-4xl px-4 mx-auto py-8">
-      <div className="bg-white shadow-sm rounded-2xl p-6 sm:p-8">
+    <div className={embedded ? '' : 'container max-w-4xl px-4 mx-auto py-8'}>
+      <div className={embedded ? '' : 'bg-white shadow-sm rounded-2xl p-6 sm:p-8'}>
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-800">Security Settings</h1>
           <p className="text-sm text-gray-500">Manage your password and review helpful tips.</p>
@@ -176,7 +176,7 @@ const ClientSecurity = () => {
           </Section>
 
         {/* Footer */}
-        <footer className="pt-8 mt-12 border-t border-gray-200 sm:hidden">
+        {!embedded && <footer className="pt-8 mt-12 border-t border-gray-200 sm:hidden">
           <div className="flex items-center space-x-3">
             <div className="flex items-center justify-center w-10 h-10 bg-blue-600 rounded">
               <span className="font-bold text-white">A</span>
@@ -188,7 +188,7 @@ const ClientSecurity = () => {
               </p>
             </div>
           </div>
-        </footer>
+        </footer>}
       </div>
     </div>
   );
