@@ -4,6 +4,29 @@ import { getAuthData } from '../utils/auth.jsx';
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/Cases`;
 
 export const caseService = {
+  getAdminCaseOverview: async () => {
+    const authData = getAuthData();
+    if (!authData) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/admin/overview`, {
+      headers: {
+        'Authorization': `Bearer ${authData.token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('Administrator access is required');
+      }
+      throw new Error('Failed to load the case overview');
+    }
+
+    return response.json();
+  },
+
   // Get cases for a client
   getClientCases: async (clientId) => {
     try {

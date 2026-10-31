@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import Logo from './Logo';
-import { Shield, Eye, EyeOff } from 'lucide-react';
+import { Shield, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -27,6 +28,9 @@ const Login = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (isLoggingIn) return;
+
+    setIsLoggingIn(true);
 
     try {
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/users/login`, {
@@ -100,6 +104,8 @@ const Login = () => {
     } catch (error) {
       console.error('Login failed:', error);
       toast.error(`Login failed. ${error.message}`);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -125,7 +131,7 @@ const Login = () => {
         <h2 className="mb-2 text-2xl sm:text-3xl md:text-4xl font-semibold text-center text-[#11265A] font-['Poppins']">Sign In to ALLY</h2>
         <p className="mb-6 sm:mb-8 text-sm sm:text-base text-center text-gray-450 font-['Poppins']">Enter your credentials to access your account</p>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-4" aria-busy={isLoggingIn}>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
             <input
@@ -133,8 +139,9 @@ const Login = () => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={isLoggingIn}
               placeholder="your.email@example.com"
-              className="block w-full px-4 py-2 mt-1 text-sm border border-gray-300 rounded-md shadow-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className="block w-full px-4 py-2 mt-1 text-sm border border-gray-300 rounded-md shadow-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-100"
             />
           </div>
 
@@ -149,13 +156,15 @@ const Login = () => {
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoggingIn}
                 placeholder="********"
-                className="block w-full px-3 py-2 mt-1 text-sm border border-gray-300 rounded-md shadow-sm sm:px-4 sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                className="block w-full px-3 py-2 mt-1 text-sm border border-gray-300 rounded-md shadow-sm sm:px-4 sm:text-base focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 disabled:cursor-not-allowed disabled:bg-gray-100"
               />
               <button
                 type="button"
                 onClick={togglePasswordVisibility}
-                className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-gray-700"
+                disabled={isLoggingIn}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-500 hover:text-gray-700 disabled:cursor-not-allowed disabled:text-gray-400"
               >
                 {showPassword ? (
                   <Eye className="w-5 h-5" />
@@ -172,7 +181,8 @@ const Login = () => {
               type="checkbox"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              disabled={isLoggingIn}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:cursor-not-allowed"
             />
             <label htmlFor="remember" className="block ml-2 text-sm text-gray-600">
               Remember me
@@ -181,9 +191,11 @@ const Login = () => {
 
           <button
             type="submit"
-            className="w-full px-4 py-2 text-sm font-semibold text-white transition bg-blue-600 rounded-md sm:py-3 sm:text-base hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            disabled={isLoggingIn}
+            className="flex items-center justify-center w-full gap-2 px-4 py-2 text-sm font-semibold text-white transition bg-blue-600 rounded-md sm:py-3 sm:text-base hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400"
           >
-            Log in
+            {isLoggingIn && <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />}
+            {isLoggingIn ? 'Logging in...' : 'Log in'}
           </button>
         </form>
 

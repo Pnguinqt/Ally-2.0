@@ -41,6 +41,19 @@ axios.interceptors.response.use(
 );
 
 export const adminService = {
+  async getAnalytics({ days = 30, role = 'all' } = {}) {
+    try {
+      const response = await axios.get(`${API_URL}/admins/analytics`, {
+        params: { days, role },
+        timeout: 15000
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching admin analytics:', error);
+      throw new Error(error.response?.data?.message || 'Failed to load analytics');
+    }
+  },
+
   // User Management Operations
   async getAllUsers() {
     try {

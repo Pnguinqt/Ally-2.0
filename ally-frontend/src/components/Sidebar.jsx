@@ -6,8 +6,6 @@ import {
   Users, 
   BarChart2, 
   Settings, 
-  FileText, 
-  Calendar,
   HelpCircle,
   LogOut,
   Eye,
@@ -57,18 +55,6 @@ const Sidebar = ({ onCloseMobile }) => {
     {
       group: 'Management',
       items: [
-        {
-          label: 'Case Oversights',
-          icon: FileText,
-          path: '/admin/cases',
-          active: path === '/admin/cases'
-        },
-        {
-          label: 'Appointments',
-          icon: Calendar,
-          path: '/admin/appointments',
-          active: path === '/admin/appointments'
-        },
         {
           label: 'System Settings',
           icon: Settings,
@@ -152,7 +138,7 @@ const Sidebar = ({ onCloseMobile }) => {
               className="flex items-center px-2 py-2.5 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50 transition-all duration-200 group"
             >
               <HelpCircle className="w-5 h-5 mr-3 text-gray-400 group-hover:text-gray-500" />
-              Help?
+              Help
             </Link>
           </li>
           <li>

@@ -11,6 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 
 import com.wachichaw.Admin.Service.AdminService;
+import com.wachichaw.Admin.DTO.AdminAnalyticsResponse;
+import com.wachichaw.Admin.Service.AdminAnalyticsService;
 import com.wachichaw.Client.Entity.ClientEntity;
 import com.wachichaw.Config.JwtUtil;
 import com.wachichaw.Lawyer.Entity.LawyerEntity;
@@ -28,6 +30,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 
@@ -37,6 +40,8 @@ public class AdminController {
     
     @Autowired
     private AdminService adminService;
+    @Autowired
+    private AdminAnalyticsService adminAnalyticsService;
     @Autowired
     private UserRepo userRepo;
     @Autowired
@@ -54,6 +59,13 @@ public class AdminController {
     public ResponseEntity<?> rejectLawyer(@PathVariable int id) {
         adminService.rejectLawyer(id); // sets credentials to null
         return ResponseEntity.ok("Lawyer rejected.");
+    }
+
+    @GetMapping("/analytics")
+    public ResponseEntity<AdminAnalyticsResponse> getAnalytics(
+            @RequestParam(defaultValue = "30") int days,
+            @RequestParam(defaultValue = "all") String role) {
+        return ResponseEntity.ok(adminAnalyticsService.getAnalytics(days, role));
     }
           
 }
