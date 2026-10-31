@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Line, Bar } from 'react-chartjs-2';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Bar, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -12,7 +12,16 @@ import {
   Legend,
   Filler
 } from 'chart.js';
-import { ChevronDown, ArrowUp, ArrowDown } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowDown,
+  ArrowUp,
+  BadgeCheck,
+  BriefcaseBusiness,
+  RefreshCw,
+  Users
+} from 'lucide-react';
+import { adminService } from '../services/adminService';
 
 ChartJS.register(
   CategoryScale,
@@ -26,203 +35,317 @@ ChartJS.register(
   Filler
 );
 
+const RANGE_OPTIONS = [
+  { value: '7', label: 'Last 7 days' },
+  { value: '30', label: 'Last 30 days' },
+  { value: '90', label: 'Last 90 days' },
+  { value: '0', label: 'All time' }
+];
+
+const ROLE_OPTIONS = [
+  { value: 'all', label: 'All roles' },
+  { value: 'client', label: 'Clients' },
+  { value: 'lawyer', label: 'Lawyers' },
+  { value: 'admin', label: 'Admins' }
+];
+
+const formatNumber = (value) => new Intl.NumberFormat('en-PH').format(value ?? 0);
+
 const AnalyticsDashboard = () => {
   const [dateRange, setDateRange] = useState('30');
   const [filterRole, setFilterRole] = useState('all');
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
-  // Stats data
-  const statsCards = [
-    { label: 'Total Users', value: '99.99', change: '+12%', isPositive: true },
-    { label: 'Active Cases', value: '99.99', change: '+12%', isPositive: true },
-    { label: 'Cases Success Rate', value: '99.99%', change: '+12%', isPositive: true },
-    { label: 'Avg Response Time', value: '2.4H', change: '-6%', isPositive: false },
-  ];
+  const loadAnalytics = useCallback(async ({ background = false } = {}) => {
+    try {
+      background ? setRefreshing(true) : setLoading(true);
+      setError('');
+      const data = await adminService.getAnalytics({
+        days: Number(dateRange),
+        role: filterRole
+      });
+      setAnalytics(data);
+    } catch (loadError) {
+      setError(loadError.message || 'Failed to load analytics');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [dateRange, filterRole]);
 
-  // Chart configurations
-  const userActivityData = {
-    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-    datasets: [
-      {
-        label: 'Active Users',
-        data: [600, 1000, 800, 850],
-        borderColor: 'rgb(59, 130, 246)',
-        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-        fill: true,
-        tension: 0.4
-      }
-    ]
-  };
+  useEffect(() => {
+    loadAnalytics();
+  }, [loadAnalytics]);
 
-  const caseMetricsData = {
-    labels: ['Week 1', 'Week 2', 'Week 3'],
-    datasets: [
-      {
-        label: 'New Cases',
-        data: [1200, 1200, 1200],
-        backgroundColor: 'rgb(16, 185, 129)',
-      },
-      {
-        label: 'Resolved Cases',
-        data: [950, 950, 950],
-        backgroundColor: 'rgb(99, 102, 241)',
-      }
-    ]
-  };
-
-  const lawyerPerformanceData = {
-    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-    datasets: [
-      {
-        label: 'Cases Handled',
-        data: [600, 1000, 650, 800],
-        borderColor: 'rgb(249, 115, 22)',
-        backgroundColor: 'rgba(249, 115, 22, 0.1)',
-        fill: true,
-        tension: 0.4
-      }
-    ]
-  };
-
-  const growthForecastData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr'],
-    datasets: [
-      {
-        label: 'Predicted Growth',
-        data: [200, 600, 1000, 1400],
-        borderColor: 'rgb(147, 51, 234)',
-        backgroundColor: 'rgba(147, 51, 234, 0.1)',
-        fill: true,
-        tension: 0.4
-      }
-    ]
-  };
-
-  const chartOptions = {
+  const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: {
         position: 'top',
-        labels: {
-          usePointStyle: true,
-          padding: 20,
-          font: {
-            size: 12
-          }
-        }
-      }
+        labels: { usePointStyle: true, padding: 18 }
+      },
+      tooltip: { displayColors: true }
     },
     scales: {
       y: {
         beginAtZero: true,
-        grid: {
-          drawBorder: false,
-          color: 'rgba(0, 0, 0, 0.1)'
-        },
-        ticks: {
-          font: {
-            size: 12
-          }
-        }
+        ticks: { precision: 0 },
+        grid: { color: 'rgba(148, 163, 184, 0.18)' }
       },
-      x: {
-        grid: {
-          display: false
-        },
-        ticks: {
-          font: {
-            size: 12
-          }
-        }
-      }
+      x: { grid: { display: false } }
     }
-  };
+  }), []);
+
+  const userActivityData = useMemo(() => ({
+    labels: analytics?.userRegistrations?.map(point => point.label) ?? [],
+    datasets: [{
+      label: 'New registrations',
+      data: analytics?.userRegistrations?.map(point => point.registrations) ?? [],
+      borderColor: 'rgb(59, 130, 246)',
+      backgroundColor: 'rgba(59, 130, 246, 0.12)',
+      fill: true,
+      tension: 0.35
+    }]
+  }), [analytics]);
+
+  const caseActivityData = useMemo(() => ({
+    labels: analytics?.caseActivity?.map(point => point.label) ?? [],
+    datasets: [
+      {
+        label: 'Cases submitted',
+        data: analytics?.caseActivity?.map(point => point.submitted) ?? [],
+        backgroundColor: 'rgb(16, 185, 129)'
+      },
+      {
+        label: 'Currently completed',
+        data: analytics?.caseActivity?.map(point => point.completed) ?? [],
+        backgroundColor: 'rgb(99, 102, 241)'
+      }
+    ]
+  }), [analytics]);
+
+  const roleDistributionData = useMemo(() => ({
+    labels: Object.keys(analytics?.userRoleDistribution ?? {}),
+    datasets: [{
+      label: 'Users',
+      data: Object.values(analytics?.userRoleDistribution ?? {}),
+      backgroundColor: ['rgb(59, 130, 246)', 'rgb(16, 185, 129)', 'rgb(139, 92, 246)'],
+      borderRadius: 6
+    }]
+  }), [analytics]);
+
+  const caseStatusData = useMemo(() => ({
+    labels: Object.keys(analytics?.caseStatusDistribution ?? {}),
+    datasets: [{
+      label: 'Cases',
+      data: Object.values(analytics?.caseStatusDistribution ?? {}),
+      backgroundColor: [
+        'rgb(245, 158, 11)',
+        'rgb(59, 130, 246)',
+        'rgb(239, 68, 68)',
+        'rgb(16, 185, 129)',
+        'rgb(148, 163, 184)'
+      ],
+      borderRadius: 6
+    }]
+  }), [analytics]);
+
+  const lawyerPerformanceData = useMemo(() => ({
+    labels: analytics?.lawyerPerformance?.map(lawyer => lawyer.lawyerName) ?? [],
+    datasets: [{
+      label: 'Cases handled',
+      data: analytics?.lawyerPerformance?.map(lawyer => lawyer.casesHandled) ?? [],
+      backgroundColor: 'rgba(249, 115, 22, 0.8)',
+      borderRadius: 6
+    }]
+  }), [analytics]);
+
+  if (loading) {
+    return <AnalyticsLoadingState />;
+  }
+
+  if (error && !analytics) {
+    return <AnalyticsErrorState message={error} onRetry={() => loadAnalytics()} />;
+  }
+
+  const metrics = analytics?.metrics ?? {};
+  const statsCards = [
+    {
+      label: filterRole === 'all' ? 'Total Users' : `Total ${ROLE_OPTIONS.find(option => option.value === filterRole)?.label}`,
+      value: formatNumber(metrics.totalUsers),
+      change: metrics.userGrowthPercent,
+      changeUnit: '%',
+      changeLabel: 'registrations vs previous period',
+      icon: Users,
+      color: 'blue'
+    },
+    {
+      label: 'New Cases',
+      value: formatNumber(metrics.newCases),
+      change: metrics.caseGrowthPercent,
+      changeUnit: '%',
+      changeLabel: 'vs previous period',
+      icon: BriefcaseBusiness,
+      color: 'emerald'
+    },
+    {
+      label: 'Case Completion Rate',
+      value: `${metrics.caseCompletionRate ?? 0}%`,
+      change: metrics.completionRateChange,
+      changeUnit: ' pp',
+      changeLabel: 'vs previous period',
+      icon: BadgeCheck,
+      color: 'violet'
+    },
+    {
+      label: 'Pending Verifications',
+      value: formatNumber(metrics.pendingVerifications),
+      icon: AlertCircle,
+      color: 'amber'
+    }
+  ];
 
   return (
     <div className="space-y-6 p-6">
-      {/* Header with filters */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">Analytics Dashboard</h1>
-        <div className="flex gap-3">
-          <div className="relative">
-            <button className="px-4 py-2 bg-gray-100 rounded-lg text-sm font-medium text-gray-700 flex items-center gap-2">
-              Last 30 Days
-              <ChevronDown className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="relative">
-            <button className="px-4 py-2 bg-gray-100 rounded-lg text-sm font-medium text-gray-700 flex items-center gap-2">
-              All Roles
-              <ChevronDown className="w-4 h-4" />
-            </button>
-          </div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Analytics Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">Live platform activity and case outcomes</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="sr-only" htmlFor="analytics-date-range">Date range</label>
+          <select
+            id="analytics-date-range"
+            value={dateRange}
+            onChange={event => setDateRange(event.target.value)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          >
+            {RANGE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="analytics-role">Account role</label>
+          <select
+            id="analytics-role"
+            value={filterRole}
+            onChange={event => setFilterRole(event.target.value)}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          >
+            {ROLE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={() => loadAnalytics({ background: true })}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statsCards.map((stat, index) => (
-          <div key={index} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-500">{stat.label}</h3>
-            <div className="mt-2 flex items-baseline">
-              <p className="text-2xl font-semibold text-gray-900">{stat.value}</p>
-              <span className={`ml-2 text-sm font-medium flex items-center ${
-                stat.isPositive ? 'text-green-600' : 'text-red-600'
-              }`}>
-                {stat.isPositive ? (
-                  <ArrowUp className="w-4 h-4 mr-1" />
-                ) : (
-                  <ArrowDown className="w-4 h-4 mr-1" />
-                )}
-                {stat.change}
-              </span>
-            </div>
-          </div>
-        ))}
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertCircle className="h-4 w-4" />
+          {error}. Showing the most recently loaded data.
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {statsCards.map(stat => <StatCard key={stat.label} {...stat} showChange={dateRange !== '0'} />)}
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* User Activity Trend */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold mb-4">User Activity Trend</h3>
-          <div className="h-[300px]">
-            <Line data={userActivityData} options={chartOptions} />
-          </div>
-        </div>
-
-        {/* Case Metrics */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold mb-4">Case Metrics</h3>
-          <div className="h-[300px]">
-            <Bar data={caseMetricsData} options={chartOptions} />
-          </div>
-        </div>
-
-        {/* Lawyer Performance */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-lg font-semibold mb-4">Lawyer Performance</h3>
-          <div className="h-[300px]">
-            <Line data={lawyerPerformanceData} options={chartOptions} />
-          </div>
-        </div>
-
-        {/* Growth Forecast */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">Growth Forecast</h3>
-            <button className="px-3 py-1.5 bg-gray-100 rounded-lg text-sm font-medium text-gray-700 flex items-center gap-2">
-              Users
-              <ChevronDown className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="h-[300px]">
-            <Line data={growthForecastData} options={chartOptions} />
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <ChartCard title="User Registration Trend" description="New accounts created in the selected period">
+          <Line data={userActivityData} options={chartOptions} />
+        </ChartCard>
+        <ChartCard title="Case Activity" description="Cases grouped by their submission date">
+          <Bar data={caseActivityData} options={chartOptions} />
+        </ChartCard>
+        <ChartCard title="Users by Role" description="Current account distribution across the platform">
+          <Bar data={roleDistributionData} options={chartOptions} />
+        </ChartCard>
+        <ChartCard title="Cases by Status" description="Current status of all cases">
+          <Bar data={caseStatusData} options={chartOptions} />
+        </ChartCard>
       </div>
+
+      <ChartCard title="Lawyer Workload" description="Lawyers ranked by recorded cases handled" tall>
+        <Bar data={lawyerPerformanceData} options={chartOptions} />
+      </ChartCard>
+
+      <p className="text-right text-xs text-gray-500">
+        Last updated {analytics?.generatedAt ? new Date(analytics.generatedAt).toLocaleString('en-PH') : '—'}
+      </p>
     </div>
   );
 };
+
+const StatCard = ({ label, value, change, changeUnit = '', changeLabel, icon, color, showChange }) => {
+  const isPositive = Number(change) >= 0;
+  const colorClasses = {
+    blue: 'bg-blue-50 text-blue-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    violet: 'bg-violet-50 text-violet-600',
+    amber: 'bg-amber-50 text-amber-600'
+  };
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-500">{label}</p>
+          <p className="mt-2 text-3xl font-semibold text-gray-900">{value}</p>
+        </div>
+        <div className={`rounded-lg p-2.5 ${colorClasses[color]}`}>
+          {React.createElement(icon, { className: 'h-5 w-5' })}
+        </div>
+      </div>
+      {showChange && change !== undefined && (
+        <div className={`mt-3 flex items-center gap-1 text-xs font-medium ${isPositive ? 'text-emerald-600' : 'text-red-600'}`}>
+          {isPositive ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+          <span>{Math.abs(Number(change))}{changeUnit} {changeLabel}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ChartCard = ({ title, description, children, tall = false }) => (
+  <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="mb-4">
+      <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+      <p className="mt-1 text-xs text-gray-500">{description}</p>
+    </div>
+    <div className={tall ? 'h-[360px]' : 'h-[300px]'}>{children}</div>
+  </section>
+);
+
+const AnalyticsLoadingState = () => (
+  <div className="space-y-6 p-6" aria-label="Loading analytics">
+    <div className="h-8 w-64 animate-pulse rounded bg-gray-200" />
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {[0, 1, 2, 3].map(item => <div key={item} className="h-32 animate-pulse rounded-xl bg-gray-100" />)}
+    </div>
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      {[0, 1, 2, 3].map(item => <div key={item} className="h-80 animate-pulse rounded-xl bg-gray-100" />)}
+    </div>
+  </div>
+);
+
+const AnalyticsErrorState = ({ message, onRetry }) => (
+  <div className="m-6 flex min-h-72 flex-col items-center justify-center rounded-xl border border-red-200 bg-red-50 p-8 text-center">
+    <AlertCircle className="mb-3 h-10 w-10 text-red-500" />
+    <h2 className="text-lg font-semibold text-red-900">Unable to load analytics</h2>
+    <p className="mt-2 max-w-lg text-sm text-red-700">{message}</p>
+    <button type="button" onClick={onRetry} className="mt-5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700">
+      Try again
+    </button>
+  </div>
+);
 
 export default AnalyticsDashboard;

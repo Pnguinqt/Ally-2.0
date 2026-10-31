@@ -1,31 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { toast } from 'sonner';
+import React, { useState } from 'react';
+import { UsersRound } from 'lucide-react';
 import StatsOverview from '../components/StatsOverview';
 import UserManagementTable from '../components/UserManagementTable';
 import AddUserModal from '../components/AddUserModal';
-import { userService } from '../services/userService';
 
 const UserManagement = () => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-
-  useEffect(() => {
-    const initializePage = async () => {
-      try {
-        setLoading(true);
-        // Initial data loading can be done here if needed
-        setLoading(false);
-      } catch (error) {
-        console.error('Error initializing user management page:', error);
-        setError('Failed to load user management data');
-        toast.error('Failed to load user management data');
-        setLoading(false);
-      }
-    };
-
-    initializePage();
-  }, []);
 
   const handleAddUserSuccess = () => {
     // Refresh the user table data
@@ -34,43 +14,29 @@ const UserManagement = () => {
     }
   };
 
-  if (error) {
-    return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <strong className="font-bold">Error!</strong>
-          <span className="block sm:inline"> {error}</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">User Management</h1>
+    <div className="mx-auto max-w-[1600px] space-y-6">
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+          <UsersRound className="h-6 w-6" aria-hidden="true" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">User Management</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Manage accounts, roles, access, and user information.
+          </p>
+        </div>
       </div>
       
       <StatsOverview />
       
-      <div className="mt-8">
-        <UserManagementTable onAddUser={() => setIsAddModalOpen(true)} />
-      </div>
+      <UserManagementTable onAddUser={() => setIsAddModalOpen(true)} />
 
       <AddUserModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={handleAddUserSuccess}
       />
-
-      {loading && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-4 rounded-lg shadow-lg">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-            <p className="mt-2 text-sm text-gray-600">Loading...</p>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

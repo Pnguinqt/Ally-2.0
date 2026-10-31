@@ -18,6 +18,7 @@ import UserManagement from './pages/UserManagement'
 import AnalyticsDashboard from './components/AnalyticsDashboard'
 import SettingsDashboard from './components/SettingsDashboard'
 import AuditTrailDashboard from './components/AuditTrailDashboard'
+import AdminCaseManagement from './pages/AdminCaseManagement'
 import ProtectedRoute from './components/ProtectedRoute'
 import { LawyerDirectoryPage } from './pages/LawyerDirectoryPage'
 import { AppointmentsPage } from './pages/AppointmentsPage'
@@ -117,6 +118,7 @@ function AppContent() {
             <Route path="users" element={<UserManagement />} />
             <Route path="analytics" element={<AnalyticsDashboard />} />
             <Route path="audit" element={<AuditTrailDashboard />} />
+            <Route path="cases" element={<AdminCaseManagement />} />
             <Route path="settings" element={<SettingsDashboard />} />     
           </Route>
 

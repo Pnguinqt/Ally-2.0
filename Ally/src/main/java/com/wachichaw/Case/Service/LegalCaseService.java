@@ -2,6 +2,7 @@ package com.wachichaw.Case.Service;
 
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.wachichaw.Case.Entity.CaseStatus;
+import com.wachichaw.Case.DTO.AdminCaseOverviewDTO;
 import com.wachichaw.Case.Entity.LegalCasesEntity;
 import com.wachichaw.Case.Entity.LegalCaseResponseDTO;
 import com.wachichaw.Case.Repo.LegalCaseRepo;
@@ -82,6 +84,15 @@ public class LegalCaseService {
         List<LegalCasesEntity> cases = legalCaseRepo.findByLawyerUserId(lawyerId);
         return cases.stream()
                 .map(LegalCaseResponseDTO::new)
+                .collect(Collectors.toList());
+    }
+
+    public List<AdminCaseOverviewDTO> getAdminCaseOverviews() {
+        return legalCaseRepo.findAll().stream()
+                .sorted(Comparator.comparing(
+                    LegalCasesEntity::getDateSubmitted,
+                    Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(AdminCaseOverviewDTO::new)
                 .collect(Collectors.toList());
     }
     

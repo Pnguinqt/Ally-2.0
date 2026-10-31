@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { MessageSquarePlus, Folder, Calendar, UserSearch, MessageCircle, Settings, LogOut, ChevronLeft, ChevronRight, X, Menu, BriefcaseBusiness } from 'lucide-react';
+import { MessageSquarePlus, Folder, Calendar, UserSearch, MessageCircle, Settings, ChevronLeft, ChevronRight, X, Menu, BriefcaseBusiness, LayoutDashboard } from 'lucide-react';
 import { useSidebar } from '../contexts/SidebarContext';
 import { getAuthData } from '../utils/auth.jsx';
 
@@ -9,6 +9,8 @@ const ChatSidebar = () => {
   const location = useLocation();
   const { isExpanded, toggleSidebar } = useSidebar();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const authData = getAuthData();
+  const isAdmin = authData?.accountType === 'ADMIN';
   
   const isOnSettingsPage = location.pathname.startsWith('/settings');
 
@@ -108,7 +110,6 @@ const ChatSidebar = () => {
             // Hide Messages from navigation
             if (item.path === '/messages') return false;
             // Hide Find Lawyer for lawyers
-            const authData = getAuthData();
             const isLawyer = authData?.accountType === 'LAWYER';
             if (item.path === '/lawyers' && isLawyer) return false;
             return true;
@@ -136,16 +137,20 @@ const ChatSidebar = () => {
           })}
 
         <button
-          onClick={() => navigate('/settings')}
+          onClick={() => navigate(isAdmin ? '/admin' : '/settings')}
           className={`w-full flex items-center gap-3 px-3 py-3.5 rounded-[8px] text-base font-medium transition-all duration-200 ${
-            isOnSettingsPage
+            !isAdmin && isOnSettingsPage
               ? 'bg-[#1A6EFF] text-white'
               : 'text-gray-700 hover:bg-gray-100'
           } ${!isExpanded ? 'justify-center' : ''}`}
-          title={!isExpanded ? 'Settings' : ''}
+          title={!isExpanded ? (isAdmin ? 'Back to Admin Page' : 'Settings') : ''}
         >
-          <Settings className={`flex-shrink-0 w-5 h-5 ${isOnSettingsPage ? 'text-white' : 'text-gray-500'}`} />
-          {isExpanded && <span>Settings</span>}
+          {isAdmin ? (
+            <LayoutDashboard className="flex-shrink-0 w-5 h-5 text-gray-500" />
+          ) : (
+            <Settings className={`flex-shrink-0 w-5 h-5 ${isOnSettingsPage ? 'text-white' : 'text-gray-500'}`} />
+          )}
+          {isExpanded && <span>{isAdmin ? 'Back to Admin Page' : 'Settings'}</span>}
         </button>
       </nav>
 

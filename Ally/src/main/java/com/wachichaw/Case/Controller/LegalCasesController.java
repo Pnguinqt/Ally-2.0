@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 
 import com.wachichaw.Case.Entity.CaseStatus;
+import com.wachichaw.Case.DTO.AdminCaseOverviewDTO;
 import com.wachichaw.Case.Entity.LegalCaseRequestDTO;
 import com.wachichaw.Case.Entity.LegalCaseUpdateRequestDTO;
 import com.wachichaw.Case.Entity.LegalCasesEntity;
@@ -29,6 +30,7 @@ import com.wachichaw.Audit.Service.AuditLogService;
 import com.wachichaw.Lawyer.Entity.LawyerEntity;
 import com.wachichaw.Lawyer.Service.LawyerService;
 import com.wachichaw.User.Repo.UserRepo;
+import com.wachichaw.User.Entity.AccountType;
 
 @RestController
 @RequestMapping("/Cases")
@@ -99,6 +101,22 @@ public class LegalCasesController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    @GetMapping("/admin/overview")
+    public ResponseEntity<List<AdminCaseOverviewDTO>> getAdminCaseOverview(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        boolean isAdmin = userRepo.findByEmail(authentication.getName())
+                .map(user -> user.getAccountType() == AccountType.ADMIN)
+                .orElse(false);
+        if (!isAdmin) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        return ResponseEntity.ok(LegalCaseService.getAdminCaseOverviews());
     }
     
     @PutMapping("/{caseId}/status")
