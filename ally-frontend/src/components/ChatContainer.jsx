@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 // Import services
-import { fetchActiveConversations, subscribeToMessages, sendMessage as chatSendMessage, editMessage, deleteMessage } from '../services/chatService';
+import { fetchActiveConversations, subscribeToConversations, subscribeToMessages, markChatAsRead, sendMessage as chatSendMessage, editMessage, deleteMessage } from '../services/chatService';
 import { fetchUserDetails, getAuthData, isAuthenticated } from '../utils/auth';
 
 // Import new UI components
@@ -13,8 +13,7 @@ import Avatar from './chat-ui/Avatar';
 import UserListItem from './chat-ui/UserListItem';
 import MessageBubble from './chat-ui/MessageBubble';
 import ChatInfoSidebar from './chat-ui/ChatInfoSidebar';
-import ChatSidebar from './ChatSidebar';
-import { useSidebar } from '../contexts/SidebarContext';
+import useMessageReadReceipt from '../hooks/useMessageReadReceipt';
 
 const ChatContainer = () => {
     const [selectedUser, setSelectedUser] = useState(null);
@@ -31,12 +30,11 @@ const ChatContainer = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { chatroomId: chatroomIdFromParams } = useParams(); // For /messages/:chatroomId route
-    const { isExpanded } = useSidebar();
 
     // Load current user details from token
     const loadCurrentUser = useCallback(async () => {
         if (!isAuthenticated()) {
-            toast.warn('Please log in to continue.');
+            toast.warning('Please log in to continue.');
             navigate('/login', { state: { from: location.pathname } });
             return null;
         }
@@ -44,7 +42,7 @@ const ChatContainer = () => {
         try {
             const authData = getAuthData();
             const userDetails = await fetchUserDetails(authData.userId);
-            setCurrentUser(userDetails);
+            setCurrentUser({ ...userDetails, name: userDetails.fullName });
             return userDetails;
         } catch (error) {
             console.error('Error loading current user:', error);
@@ -57,7 +55,7 @@ const ChatContainer = () => {
 
     // Scroll to bottom on new messages
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     };
 
     useEffect(() => {
@@ -72,19 +70,32 @@ const ChatContainer = () => {
             setMessages(newMessages || []);
             setChatroomId(newChatroomId);
             scrollToBottom();
-        });
+        }, error => toast.error(error.message || 'Unable to receive messages.'));
 
         return () => {
             unsubscribe();
         };
     }, [currentUser, selectedUser]);
 
+    useMessageReadReceipt(chatroomId, currentUser?.id, messages, markChatAsRead);
+
+    useEffect(() => {
+        if (!currentUser?.id) return;
+        return subscribeToConversations(currentUser.id, items => {
+            const pendingContact = location.state?.selectedUser;
+            setConversations(pendingContact && !items.some(item => String(item.id) === String(pendingContact.id))
+                ? [pendingContact, ...items] : items);
+        }, error => toast.error(error.message || 'Unable to refresh conversations.'));
+    }, [currentUser?.id, location.state?.selectedUser]);
+
     // The main effect to initialize the chat interface
     useEffect(() => {
+        let active = true;
         const initializeChat = async () => {
             setLoading(true);
 
             const user = await loadCurrentUser();
+            if (!active) return;
             if (!user) {
                 // loadCurrentUser handles redirection, so we can stop here.
                 setLoading(false);
@@ -94,6 +105,7 @@ const ChatContainer = () => {
             try {
                 // 1. Fetch existing conversations using user ID
                 const activeConvos = await fetchActiveConversations(user.id);
+                if (!active) return;
 
                 // 2. Determine the selected user
                 let userToSelect = null;
@@ -119,21 +131,14 @@ const ChatContainer = () => {
                 setSelectedUser(userToSelect);
 
             } catch (error) {
-                console.error('Error initializing chat:', error.message);
-                toast.error(`Failed to load chat conversations: ${error.message}`);
+                if (active) { console.error('Error initializing chat:', error.message); toast.error(`Failed to load chat conversations: ${error.message}`); }
             } finally {
-                setLoading(false);
+                if (active) setLoading(false);
             }
         };
 
         initializeChat();
-
-        // Cleanup navigation state to prevent re-selecting the same user on refresh
-        return () => {
-            if (location.state?.selectedUser) {
-                navigate(location.pathname, { replace: true });
-            }
-        };
+        return () => { active = false; };
     }, [chatroomIdFromParams, loadCurrentUser, location.state, navigate, location.pathname]);
 
     const filteredConversations = conversations.filter(conv =>
@@ -173,22 +178,24 @@ const ChatContainer = () => {
     
     const handleEdit = async (messageId, content) => {
         if (!chatroomId) {
-            toast.warn('No active chatroom found.');
+            toast.warning('No active chatroom found.');
             return;
         }
 
         try {
             await editMessage(chatroomId, messageId, content);
             toast.success('Message updated!');
+            return true;
         } catch (error) {
             console.error('Error editing message:', error.message);
             toast.error('Failed to update message');
+            return false;
         }
     };
 
     const handleDelete = async (messageId) => {
         if (!chatroomId) {
-            toast.warn('No active chatroom found.');
+            toast.warning('No active chatroom found.');
             return;
         }
 
@@ -202,15 +209,13 @@ const ChatContainer = () => {
     };
 
     return (
-        <div className={`min-h-screen bg-gray-50 ${isExpanded ? 'md:ml-[240px]' : 'md:ml-[60px]'}`}>
-            {/* Global app sidebar */}
-            <ChatSidebar />
+        <div className="min-h-[calc(100dvh-4rem)] bg-gray-50">
             {/* Container wrapper */}
-            <div className="container max-w-7xl px-4 mx-auto py-8">
+            <div className="container max-w-7xl px-4 mx-auto py-4">
                 <div className="bg-white shadow-sm rounded-xl overflow-hidden">
-                    <div className="flex h-[calc(100vh-8rem)] bg-white">
+                    <div className="flex h-[calc(100dvh-6rem)] bg-white">
                         {/* Sidebar - Conversations List */}
-                        <div className="flex flex-col border-r w-96">
+                        <div className={`${selectedUser ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r md:w-80`}>
                 {/* User Profile Header */}
                 <div className="p-4 border-b">
                     <div className="flex items-center gap-3">
@@ -252,6 +257,7 @@ const ChatContainer = () => {
 
                 {/* Conversations List */}
                 <div className="flex-1 overflow-y-auto">
+                    {!loading && filteredConversations.length === 0 && <p className="p-5 text-sm leading-6 text-gray-500">{searchQuery ? 'No conversations match your search.' : 'No conversations yet. Open a lawyer profile to start a message.'}</p>}
                     {filteredConversations.map(user => (
                         <UserListItem
                             key={user.id}
@@ -264,18 +270,20 @@ const ChatContainer = () => {
             </div>
 
             {/* Main Chat Area */}
-            <div className="flex flex-col flex-1 min-w-0">
+            <div className={`${selectedUser ? 'flex' : 'hidden md:flex'} flex-col flex-1 min-w-0`}>
                 {loading ? (
-                    <div className="flex items-center justify-center flex-1"></div>
+                    <div role="status" className="flex items-center justify-center flex-1 text-sm text-gray-500">Loading messages...</div>
                 ) : selectedUser && currentUser ? (
                     <>
                         {/* Chat Header */}
                         <div className="flex items-center justify-between flex-shrink-0 p-4 bg-white border-b">
                             <div className="flex items-center min-w-0 gap-3">
-                                <Avatar name={selectedUser.name} size="md" online={selectedUser.id === '2'} />
+                                <button type="button" aria-label="Back to conversations" onClick={() => { setSelectedUser(null); navigate('/messages'); }}
+                                  className="rounded-lg p-2 text-sm text-blue-600 hover:bg-blue-50 md:hidden">Back</button>
+                                <Avatar name={selectedUser.name} size="md" />
                                 <div className="min-w-0">
                                     <h2 className="font-semibold truncate text-primary">{selectedUser.name}</h2>
-                                    <span className="text-sm text-green-500">Online</span>
+                                    <span className="text-sm capitalize text-gray-500">{(selectedUser.accountType || selectedUser.role || 'Contact').toLowerCase()}</span>
                                 </div>
                             </div>
                             <div className="flex items-center flex-shrink-0 gap-2">
@@ -319,7 +327,7 @@ const ChatContainer = () => {
                                                     message={message}
                                                     isOwn={own}
                                                     senderName={own ? currentUser?.name : selectedUser?.name}
-                                                    onEdit={() => handleEdit(message.id, message.content)}
+                                                    onEdit={content => handleEdit(message.id, content)}
                                                     onDelete={() => handleDelete(message.id)}
                                                 />
                                             );

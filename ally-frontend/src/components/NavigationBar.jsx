@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { User, LogOut, Settings, ChevronDown, MessageCircle, Bell, LayoutDashboard } from 'lucide-react';
 import { getAuthData, isAuthenticated, logout, fetchUserDetails } from '../utils/auth.jsx';
@@ -6,26 +6,26 @@ import { shouldHideNavigation } from '../utils/navigation.js';
 import NotificationDropdown from './NotificationDropdown';
 import MessageDropdown from './MessageDropdown';
 import { useSidebar } from '../contexts/SidebarContext';
-import { fetchActiveConversations } from '../services/chatService';
+import { fetchActiveConversations, subscribeToConversations } from '../services/chatService';
 import useLawyerStatus from '../hooks/useLawyerStatus.js';
 import { useDemoRuntime } from '../demo/DemoContext';
 
 const NavigationBar = () => {
   const demo = useDemoRuntime();
+  const demoProfile = demo?.profile;
   const navigate = useNavigate();
   const location = useLocation();
   const isLoggedIn = Boolean(demo) || isAuthenticated();
   const { isExpanded } = useSidebar();
   
   // Memoize authData to prevent infinite re-renders
-  const authData = useMemo(() => demo?.auth || getAuthData(), [isLoggedIn, demo]);
+  const authData = useMemo(() => isLoggedIn ? demo?.auth || getAuthData() : null, [isLoggedIn, demo]);
   const { status, loading: statusLoading, isLawyer } = useLawyerStatus();
   
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isMessageOpen, setIsMessageOpen] = useState(false);
   const [userDetails, setUserDetails] = useState(null);
-  const [isLoadingUser, setIsLoadingUser] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const dropdownRef = useRef(null);
@@ -41,32 +41,8 @@ const NavigationBar = () => {
     return false;
   }, [status, isLawyer, statusLoading]);
 
-  // Fetch user details and conversations when logged in
-  useEffect(() => {
-    const getUserDetails = async () => {
-      if (demo) { setUserDetails(demo.profile); await loadConversations(-1); return; }
-      if (isLoggedIn && authData?.userId && !isLoadingUser) {
-        setIsLoadingUser(true);
-        try {
-          const details = await fetchUserDetails(authData.userId);
-          setUserDetails(details);
-          
-          // Fetch conversations after getting user details
-          await loadConversations(details.id);
-        } catch (error) {
-          console.error('Failed to fetch user details:', error);
-          setUserDetails(null);
-        } finally {
-          setIsLoadingUser(false);
-        }
-      }
-    };
-
-    getUserDetails();
-  }, [isLoggedIn, authData?.userId, demo?.profile]);
-
   // Load conversations
-  const loadConversations = async (userId) => {
+  const loadConversations = useCallback(async (userId) => {
     if (!userId) return;
     
     setLoadingConversations(true);
@@ -78,18 +54,40 @@ const NavigationBar = () => {
     } finally {
       setLoadingConversations(false);
     }
-  };
+  }, [demo]);
+  const refreshConversations = useCallback(() => loadConversations(userDetails?.id), [loadConversations, userDetails?.id]);
 
-  // Poll for new messages every 30 seconds
+  useEffect(() => {
+    let active = true;
+    const loadUser = async () => {
+      if (demo) { setUserDetails(demoProfile); await loadConversations(-1); return; }
+      if (!isLoggedIn || !authData?.userId) { setUserDetails(null); return; }
+      try {
+        const details = await fetchUserDetails(authData.userId);
+        if (active) setUserDetails(details);
+      } catch (error) {
+        if (active) { console.error('Failed to load the current user:', error); setUserDetails(null); }
+      }
+    };
+    loadUser();
+    return () => { active = false; };
+  }, [isLoggedIn, authData?.userId, demo, demoProfile, loadConversations]);
+
+  // Production inbox metadata is live; demo conversations remain local to the tab.
   useEffect(() => {
     if (!isLoggedIn || !userDetails?.id) return;
-
-    const interval = setInterval(() => {
-      loadConversations(userDetails.id);
-    }, 30000); // Poll every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [isLoggedIn, userDetails?.id]);
+    if (demo) {
+      const interval = setInterval(() => loadConversations(userDetails.id), 30000);
+      return () => clearInterval(interval);
+    }
+    return subscribeToConversations(userDetails.id, items => {
+      setConversations(items);
+      setLoadingConversations(false);
+    }, error => {
+      console.error('Unable to refresh the inbox:', error);
+      setLoadingConversations(false);
+    });
+  }, [isLoggedIn, userDetails?.id, demo, loadConversations]);
     
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -156,6 +154,7 @@ const NavigationBar = () => {
     // Convert to title case for display
     return accountType.charAt(0).toUpperCase() + accountType.slice(1).toLowerCase();
   };
+  const unreadConversations = conversations.filter(conversation => conversation.isRead === false).length;
 
   // UserTypeBadge component
   const UserTypeBadge = () => {
@@ -228,6 +227,8 @@ const NavigationBar = () => {
                         className={`w-5 h-5 ${isMessageOpen ? 'text-blue-600' : 'text-[#2B62C4]'}`} 
                         strokeWidth={1.8} 
                       />
+                      {unreadConversations > 0 && <span aria-hidden="true" title={`${unreadConversations} unread conversations`}
+                        className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-blue-600 px-1 text-[10px] font-semibold text-white">{unreadConversations > 9 ? '9+' : unreadConversations}</span>}
                     </button>
                     <MessageDropdown
                       isOpen={isMessageOpen}
@@ -235,7 +236,7 @@ const NavigationBar = () => {
                       conversations={conversations}
                       currentUser={userDetails}
                       loading={loadingConversations}
-                      onRefresh={() => loadConversations(userDetails?.id)}
+                      onRefresh={refreshConversations}
                     />
                   </div>
                   
