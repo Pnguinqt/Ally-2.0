@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import { getAuthData } from '../utils/auth';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const useCurrentUser = () => {
+    const demo = useDemoRuntime();
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const initialize = async () => {
+            if (demo) {
+                setCurrentUser({ ...demo.profile, id: '-1', role: 'client', accountType: 'client', name: demo.profile.fullName });
+                setLoading(false);
+                return;
+            }
             try {
                 setLoading(true);
                 const authData = getAuthData();

@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Filter, Loader2, AlertCircle } from 'lucide-react';
 import { getAuthData } from '../utils/auth.jsx';
-import { caseService } from '../services/caseService.jsx';
+import { caseService as productionCaseService } from '../services/caseService.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
+import { useSearchParams } from 'react-router-dom';
 import CasesList from '../components/CasesList.jsx';
 import CaseSubmissionForm from '../components/CaseSubmissionForm.jsx';
 import CaseTracker from '../components/CaseTracker.jsx';
 
 const MyCasesPage = () => {
+  const demo = useDemoRuntime();
+  const caseService = demo?.caseService || productionCaseService;
+  const [searchParams, setSearchParams] = useSearchParams();
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showSubmissionForm, setShowSubmissionForm] = useState(false);
+  const [showSubmissionForm, setShowSubmissionForm] = useState(Boolean(demo && searchParams.get('new')));
   const [caseToEdit, setCaseToEdit] = useState(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [authData, setAuthData] = useState(null);
@@ -18,7 +23,7 @@ const MyCasesPage = () => {
 
   // Get auth data on component mount
   useEffect(() => {
-    const auth = getAuthData();
+    const auth = demo?.auth || getAuthData();
     if (!auth) {
       setError('You must be logged in to view cases');
       setLoading(false);
@@ -26,6 +31,10 @@ const MyCasesPage = () => {
     }
     setAuthData(auth);
   }, []);
+
+  useEffect(() => {
+    if (demo && searchParams.get('new')) { setShowSubmissionForm(true); setSearchParams({}, { replace: true }); }
+  }, [demo, searchParams, setSearchParams]);
 
   // Fetch cases when auth data is available
   useEffect(() => {

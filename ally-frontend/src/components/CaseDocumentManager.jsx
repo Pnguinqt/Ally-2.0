@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Upload, FileText, Trash2, Download, Search, Filter, AlertCircle, CheckCircle, Loader2, Eye, X, Plus, Minus, Sparkles, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { documentService } from '../services/documentService.js';
+import { documentService as productionDocumentService } from '../services/documentService.js';
+import { useDemoRuntime } from '../demo/DemoContext';
+import { SAMPLE_PDF, SAMPLE_NAME } from '../demo/demoState';
 import { validateFile, formatFileSize } from '../utils/filePreviewUtils.js';
 import FilePreview from './FilePreview.jsx';
 import MarkdownText from './shared/MarkdownText.jsx';
 import SidePanel from './shared/SidePanel.jsx';
 
 const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) => {
+  const demo = useDemoRuntime();
+  const documentService = demo?.documentService || productionDocumentService;
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -22,7 +26,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
   const [summaryDocument, setSummaryDocument] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState('');
-  const [documentSummaries, setDocumentSummaries] = useState({});
+  const [documentSummaries, setDocumentSummaries] = useState(() => demo?.getSummary() ? { [demo.getDocumentId()]: demo.getSummary() } : {});
   
   // Inline File List State
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -40,7 +44,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
     } finally {
       setLoading(false);
     }
-  }, [caseId]);
+  }, [caseId, documentService]);
 
   // Load case documents on mount and when caseId changes
   useEffect(() => {
@@ -113,12 +117,12 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
       
       // Additional legacy validation for compatibility
       if (!documentService.validateFileType(file.name)) {
-        errors.push(`${file.name}: Unsupported file type`);
+        errors.push(`${file.name}: ${demo ? 'Use a PDF for this evaluation' : 'Unsupported file type'}`);
         return;
       }
       
       if (!documentService.validateFileSize(file.size)) {
-        errors.push(`${file.name}: File size exceeds 20MB limit`);
+        errors.push(`${file.name}: File size exceeds ${demo ? '10' : '20'}MB limit`);
         return;
       }
       
@@ -314,6 +318,12 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
     try {
       // For different file types, we'll handle them differently
       const fileType = document.documentType.toLowerCase();
+
+      if (demo) {
+        const file = await documentService.getDocumentFile();
+        setDocumentContent({ type: 'pdf', url: URL.createObjectURL(file) });
+        return;
+      }
       
       if (['jpg', 'jpeg', 'png', 'gif'].includes(fileType)) {
         // For images, we can use the download URL directly
@@ -414,6 +424,10 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
   return (
     <div className="bg-white rounded-lg shadow-sm">
       <div className="p-6">
+        {demo && <div className="flex flex-wrap items-center justify-between gap-3 p-4 mb-6 border border-blue-100 rounded-lg bg-blue-50">
+          <div><p className="text-sm font-semibold text-blue-900">Evaluation PDF: {SAMPLE_NAME}</p><p className="mt-1 text-xs text-blue-700">Download it, choose Select Files, then Upload All. Use Summarize on the uploaded document.</p></div>
+          <a href={SAMPLE_PDF} download={SAMPLE_NAME} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-200 rounded-md"><Download className="w-4 h-4" />Download sample PDF</a>
+        </div>}
         {/* Upload Section - Only for Clients and Lawyer */}
         {(userRole === 'CLIENT' || userRole === 'LAWYER') && (
           <div className="mb-8">
@@ -433,7 +447,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
                 Drag and drop files here, or click to select files
               </p>
               <p className="text-sm text-gray-500 mb-4">
-                Supported formats: PDF, DOC, DOCX, TXT, JPG, JPEG, PNG (Max 20MB each)
+                {demo ? 'Evaluation format: PDF (Max 10MB)' : 'Supported formats: PDF, DOC, DOCX, TXT, JPG, JPEG, PNG (Max 20MB each)'}
               </p>
               <input
                 type="file"
@@ -441,7 +455,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
                 onChange={handleFileSelect}
                 className="hidden"
                 id="document-upload"
-                accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+                accept={demo ? '.pdf,application/pdf' : '.pdf,.doc,.docx,.txt,.jpg,.jpeg,.png'}
                 disabled={uploading}
               />
               <label

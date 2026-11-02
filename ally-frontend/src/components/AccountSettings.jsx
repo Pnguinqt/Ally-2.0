@@ -5,6 +5,7 @@ import LawyerSettings from './LawyerSettings';
 import ClientSettings from './ClientSettings';
 import ClientSecurity from './ClientSecurity';
 import { getAuthData, fetchUserDetails } from '../utils/auth';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const tabs = [
   {
@@ -24,6 +25,7 @@ const tabs = [
 ];
 
 const AccountSettings = () => {
+  const demo = useDemoRuntime();
   const location = useLocation();
   const navigate = useNavigate();
   const [userType, setUserType] = useState(null);
@@ -37,13 +39,13 @@ const AccountSettings = () => {
       setLoading(true);
       setError(null);
       try {
-        const auth = getAuthData();
+        const auth = demo?.auth || getAuthData();
         if (!auth?.userId) {
           setError('You are not authenticated. Please log in.');
           return;
         }
 
-        const data = await fetchUserDetails(auth.userId);
+        const data = demo ? demo.profile : await fetchUserDetails(auth.userId);
         if (!data.accountType) {
           setError('Unable to determine your account type.');
           return;
@@ -109,7 +111,7 @@ const AccountSettings = () => {
                   <button
                     key={tab.id}
                     type="button"
-                    onClick={() => navigate(tab.path)}
+                    onClick={() => navigate(demo ? demo.path(tab.path) : tab.path)}
                     className={`flex min-w-0 items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors ${
                       selected
                         ? 'bg-blue-600 text-white shadow-sm'

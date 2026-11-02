@@ -10,24 +10,24 @@ export const useSidebar = () => {
   return context;
 };
 
-export const SidebarProvider = ({ children }) => {
+export const SidebarProvider = ({ children, persist = true }) => {
   // Get initial state from localStorage or default to true (expanded)
   const [isExpanded, setIsExpanded] = useState(() => {
-    const saved = localStorage.getItem('sidebar-expanded');
+    const saved = persist ? localStorage.getItem('sidebar-expanded') : null;
     return saved !== null ? JSON.parse(saved) : true;
   });
 
   // Persist state to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem('sidebar-expanded', JSON.stringify(isExpanded));
-  }, [isExpanded]);
+    if (persist) localStorage.setItem('sidebar-expanded', JSON.stringify(isExpanded));
+  }, [isExpanded, persist]);
 
   const toggleSidebar = () => {
     setIsExpanded(prev => !prev);
   };
 
   const resetSidebar = () => {
-    localStorage.removeItem('sidebar-expanded');
+    if (persist) localStorage.removeItem('sidebar-expanded');
     setIsExpanded(true);
   };
 

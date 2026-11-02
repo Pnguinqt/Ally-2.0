@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { X, Clock, Calendar as CalendarIcon, User, Loader2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Calendar } from './ui/calendar';
-import { scheduleService } from '../services/scheduleService.jsx';
+import { scheduleService as productionScheduleService } from '../services/scheduleService.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
 import { getAuthData, fetchUserDetails } from '../utils/auth.jsx';
 import { getStartOfDay, isPastDate, filterPastTimeSlots, isPastTimeSlot } from '../utils/dateUtils.js';
 
@@ -16,6 +17,8 @@ export const BookingModal = ({
   appointmentToReschedule,
   onRescheduleSuccess
 }) => {
+  const demo = useDemoRuntime();
+  const scheduleService = demo?.scheduleService || productionScheduleService;
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState('');
   const [consultationType, setConsultationType] = useState('in-person');
@@ -44,7 +47,7 @@ export const BookingModal = ({
     setError('');
     
     try {
-      const authData = getAuthData();
+      const authData = demo?.auth || getAuthData();
       if (!authData) {
         setError('You must be logged in to book a consultation');
         return;
@@ -52,7 +55,7 @@ export const BookingModal = ({
 
       // Try to get user details from backend
       try {
-        const details = await fetchUserDetails(authData.userId);
+        const details = demo ? demo.profile : await fetchUserDetails(authData.userId);
         setUserDetails(details);
       } catch (fetchError) {
         console.warn('Could not fetch full user details, using auth data:', fetchError);

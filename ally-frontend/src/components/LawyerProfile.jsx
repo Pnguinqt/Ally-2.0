@@ -8,8 +8,10 @@ import CaseSubmissionForm from './CaseSubmissionForm';
 import useCurrentUser from '../hooks/useCurrentUser';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/modalScrollLock';
 import { fetchUserDetails } from '../utils/auth';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 export const LawyerProfile = ({ lawyer, onClose }) => {
+    const demo = useDemoRuntime();
     const navigate = useNavigate();
     const [isCaseSubmissionOpen, setIsCaseSubmissionOpen] = useState(false);
     const [isChatModalOpen, setIsChatModalOpen] = useState(false);
@@ -24,7 +26,7 @@ export const LawyerProfile = ({ lawyer, onClose }) => {
     // Fetch profile photo URL if not already available
     useEffect(() => {
         const fetchProfilePhoto = async () => {
-            if (!lawyer) return;
+            if (!lawyer || demo) return;
             
             // Check if profile photo is already in lawyer data
             const existingPhoto = lawyer.profilePhotoUrl || lawyer.raw?.profilePhotoUrl || lawyer.raw?.profilePhoto;
