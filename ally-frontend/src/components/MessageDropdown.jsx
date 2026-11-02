@@ -1,37 +1,53 @@
 import React, { useState, useEffect } from 'react';
-import { X, Edit, ArrowLeft, Search, Send } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { X, Edit, ArrowLeft, Search } from 'lucide-react';
 import Chat from './Chat';
+import { useDemoRuntime } from '../demo/DemoContext';
+import { fetchSuggestedLawyers, lawyerMessagingContacts } from '../services/messagingContacts';
 
 const MessageDropdown = ({ isOpen, onClose, conversations = [], currentUser, loading = false, onRefresh }) => {
+  const demo = useDemoRuntime();
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const navigate = useNavigate();
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState('');
+  const [suggestionsAttempt, setSuggestionsAttempt] = useState(0);
 
   // Check if current user is a lawyer
-  const isLawyer = currentUser?.accountType === 'LAWYER';
+  const isLawyer = currentUser?.accountType?.toUpperCase() === 'LAWYER';
+  const clientConversations = isLawyer ? conversations : null;
 
   // Refresh conversations when coming back from chat view
   useEffect(() => {
     if (!selectedConversation && isOpen && onRefresh) {
       onRefresh();
     }
-  }, [selectedConversation, isOpen]);
+  }, [selectedConversation, isOpen, onRefresh]);
 
-  // Update suggested users when conversations change
+  // New contacts come from the directory, independently of inbox history.
   useEffect(() => {
+    if (!isOpen || !showNewMessage || !currentUser?.id) return;
     if (isLawyer) {
-      // If current user is a lawyer, show clients
-      const clients = conversations.filter(c => c.accountType !== 'LAWYER');
+      const clients = clientConversations.filter(c => (c.accountType || c.role)?.toUpperCase() === 'CLIENT');
       setSuggestedUsers(clients);
-    } else {
-      // If current user is a client, show lawyers
-      const lawyers = conversations.filter(c => c.accountType === 'LAWYER');
-      setSuggestedUsers(lawyers);
+      setSuggestionsError('');
+      setLoadingSuggestions(false);
+      return;
     }
-  }, [conversations, isLawyer]);
+    const controller = new AbortController();
+    let active = true;
+    setLoadingSuggestions(true);
+    setSuggestionsError('');
+    setSuggestedUsers([]);
+    const load = demo ? demo.loadLawyers() : fetchSuggestedLawyers({ signal: controller.signal });
+    load.then(lawyers => {
+      if (active) setSuggestedUsers(lawyerMessagingContacts(lawyers, currentUser.id));
+    }).catch(error => {
+      if (active) setSuggestionsError(error.message || 'Unable to load suggested lawyers.');
+    }).finally(() => { if (active) setLoadingSuggestions(false); });
+    return () => { active = false; controller.abort(); };
+  }, [isOpen, showNewMessage, currentUser?.id, clientConversations, isLawyer, demo, suggestionsAttempt]);
 
   const handleConversationClick = (conversation) => {
     setSelectedConversation(conversation);
@@ -96,7 +112,7 @@ const MessageDropdown = ({ isOpen, onClose, conversations = [], currentUser, loa
   // Chat View
   if (selectedConversation && currentUser) {
     return (
-      <div className="absolute right-0 mt-2 w-96 h-[600px] bg-white rounded-lg shadow-xl border border-gray-200 z-50 flex flex-col">
+      <div className="fixed left-4 right-4 top-20 h-[600px] max-h-[calc(100dvh-6rem)] bg-white rounded-lg shadow-xl border border-gray-200 z-50 flex flex-col md:absolute md:left-auto md:right-0 md:top-full md:mt-2 md:w-96">
         {/* Chat Header */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-gray-50">
           <button
@@ -150,10 +166,11 @@ const MessageDropdown = ({ isOpen, onClose, conversations = [], currentUser, loa
   // New Message View
   if (showNewMessage) {
     return (
-      <div className="absolute right-0 mt-2 w-80 h-[500px] bg-white rounded-lg shadow-xl border border-gray-200 z-50 flex flex-col">
+      <div className="fixed left-4 right-4 top-20 h-[500px] max-h-[calc(100dvh-6rem)] bg-white rounded-lg shadow-xl border border-gray-200 z-50 flex flex-col md:absolute md:left-auto md:right-0 md:top-full md:mt-2 md:w-80">
         {/* Header with Back Button */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200">
           <button
+            aria-label="Back to inbox"
             onClick={handleBackClick}
             className="text-gray-600 hover:text-gray-900 transition-colors"
           >
@@ -184,9 +201,14 @@ const MessageDropdown = ({ isOpen, onClose, conversations = [], currentUser, loa
             </p>
           </div>
           
-          {loading ? (
+          {loadingSuggestions ? (
             <div className="flex items-center justify-center py-8">
-              <div className="text-gray-500">Loading...</div>
+              <div role="status" className="text-gray-500">Loading suggestions...</div>
+            </div>
+          ) : suggestionsError ? (
+            <div role="alert" className="px-4 py-8 text-center text-sm">
+              <p className="text-gray-600">{suggestionsError}</p>
+              <button type="button" onClick={() => setSuggestionsAttempt(attempt => attempt + 1)} className="mt-3 font-semibold text-blue-600">Try again</button>
             </div>
           ) : filteredUsers.length > 0 ? (
             <div className="px-2">
@@ -231,7 +253,7 @@ const MessageDropdown = ({ isOpen, onClose, conversations = [], currentUser, loa
   }
 
   return (
-    <div className="absolute right-0 mt-2 w-80 h-[500px] bg-white rounded-lg shadow-xl border border-gray-200 z-50 flex flex-col">
+    <div className="fixed left-4 right-4 top-20 h-[500px] max-h-[calc(100dvh-6rem)] bg-white rounded-lg shadow-xl border border-gray-200 z-50 flex flex-col md:absolute md:left-auto md:right-0 md:top-full md:mt-2 md:w-80">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900">Inbox</h3>
@@ -284,9 +306,10 @@ const MessageDropdown = ({ isOpen, onClose, conversations = [], currentUser, loa
               )}
               <div className="flex-1 min-w-0 text-left pt-1">
                 <div className="flex items-baseline justify-between gap-2 mb-1">
-                  <p className="font-semibold text-gray-900 truncate text-sm">
+                  <p className={`${conversation.isRead === false ? 'font-bold text-blue-900' : 'font-semibold text-gray-900'} truncate text-sm`}>
                     {conversation.name}
                   </p>
+                  {conversation.isRead === false && <span aria-label="Unread conversation" className="h-2 w-2 shrink-0 rounded-full bg-blue-600" />}
                   {conversation.lastMessageTimestamp && (
                     <span className="text-xs text-gray-500 flex-shrink-0 font-medium">
                       {formatMessageTime(conversation.lastMessageTimestamp.toDate ? conversation.lastMessageTimestamp.toDate() : conversation.lastMessageTimestamp)}

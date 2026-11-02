@@ -96,6 +96,8 @@ function AppContent() {
           <Route element={<LayoutRoutes />}>
             <Route path="/lawyers" element={<ProtectedRoute><LawyerDirectoryPage /></ProtectedRoute>} />
             <Route path="/messages" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
+            <Route path="/messages/:chatroomId" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
+            <Route path="/chat" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
             <Route path="/appointments" element={<ProtectedRoute><AppointmentsPage /></ProtectedRoute>} />
             <Route path="/my-cases" element={<ProtectedRoute><MyCasesPage /></ProtectedRoute>} />
             <Route path="/workspace" element={<ProtectedRoute><LegalWorkspacePage /></ProtectedRoute>} />
@@ -106,9 +108,6 @@ function AppContent() {
             <Route path="/lawyer-settings" element={<ProtectedRoute><Navigate to="/settings" replace /></ProtectedRoute>} />
             <Route path="/consult" element={<ProtectedRoute><AllyConsultationChat /></ProtectedRoute>} />
           </Route>
-          {/* Chat Routes */}
-          <Route path="/chat" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
-          <Route path="/messages/:chatroomId" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
 
 
           {/* Admin Routes */}

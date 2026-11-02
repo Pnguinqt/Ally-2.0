@@ -36,7 +36,8 @@ const ChatSidebar = () => {
   };
 
   const isActive = (path) => {
-    return location.pathname === (demo ? demo.path(path) : path);
+    const destination = demo ? demo.path(path) : path;
+    return location.pathname === destination || (path !== '/' && location.pathname.startsWith(`${destination}/`));
   };
 
   const handleNavigation = (item) => {
@@ -110,7 +111,7 @@ const ChatSidebar = () => {
         {navigationItems
           .filter(item => {
             // Hide Messages from navigation
-            if (item.path === '/messages') return false;
+            if (item.path === '/messages' && demo) return false;
             // Hide Find Lawyer for lawyers
             const isLawyer = authData?.accountType === 'LAWYER';
             if (item.path === '/lawyers' && isLawyer) return false;

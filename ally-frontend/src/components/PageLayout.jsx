@@ -31,6 +31,7 @@ const PageLayout = ({ children }) => {
 
   const showWarning = shouldShowWarning();
   const isWorkspace = location.pathname === (demo ? '/demo/workspace' : '/workspace');
+  const isMessaging = location.pathname === '/chat' || location.pathname === '/messages' || location.pathname.startsWith('/messages/');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -58,7 +59,7 @@ const PageLayout = ({ children }) => {
         )}
         
         {/* Main Content - adjust padding if warning is shown */}
-        <main className={demo ? 'pt-16' : showWarning ? "pt-28" : isWorkspace ? "pt-16" : "pt-12"}
+        <main className={demo ? 'pt-16' : showWarning ? "pt-28" : isWorkspace || isMessaging ? "pt-16" : "pt-12"}
           style={isWorkspace ? { '--workspace-offset': demo ? '7rem' : showWarning ? '7rem' : '4rem' } : undefined}>
           {children}
         </main>
