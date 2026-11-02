@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { MessageSquarePlus, Folder, Calendar, UserSearch, MessageCircle, Settings, ChevronLeft, ChevronRight, X, Menu, BriefcaseBusiness, LayoutDashboard } from 'lucide-react';
+import { MessageSquarePlus, Folder, Calendar, UserSearch, Settings, ChevronLeft, ChevronRight, X, Menu, BriefcaseBusiness, LayoutDashboard } from 'lucide-react';
 import { useSidebar } from '../contexts/SidebarContext';
 import { getAuthData } from '../utils/auth.jsx';
 import { useDemoRuntime } from '../demo/DemoContext';
@@ -23,7 +23,6 @@ const ChatSidebar = () => {
 
   const navigationItems = [
     { name: 'New Chat', path: '/', icon: MessageSquarePlus, action: 'newChat' },
-    { name: 'Messages', path: '/messages', icon: MessageCircle },
     { name: 'Case Workspace', path: '/workspace', icon: BriefcaseBusiness },
     { name: 'My Cases', path: '/my-cases', icon: Folder },
     { name: 'Appointment', path: '/appointments', icon: Calendar },
@@ -110,8 +109,6 @@ const ChatSidebar = () => {
       <nav className="flex-1 px-3 py-6 space-y-2 overflow-y-auto">
         {navigationItems
           .filter(item => {
-            // Hide Messages from navigation
-            if (item.path === '/messages' && demo) return false;
             // Hide Find Lawyer for lawyers
             const isLawyer = authData?.accountType === 'LAWYER';
             if (item.path === '/lawyers' && isLawyer) return false;
