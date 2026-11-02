@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Calendar, Clock, User, FileText, Check, Trash2, MapPin } from 'lucide-react';
 import { getAuthData } from '../utils/auth.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 export const AppointmentDetailsModal = ({
   appointment,
@@ -11,12 +12,13 @@ export const AppointmentDetailsModal = ({
   onCancel,
   onReschedule
 }) => {
+  const demo = useDemoRuntime();
   const [isAccepting, setIsAccepting] = useState(false);
   const [isDeclining, setIsDeclining] = useState(false);
   const [showDeclineModal, setShowDeclineModal] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
   
-  const authData = getAuthData();
+  const authData = demo?.auth || getAuthData();
   const isLawyer = authData?.accountType === 'LAWYER';
 
   const formatDateTime = (dateTime) => {

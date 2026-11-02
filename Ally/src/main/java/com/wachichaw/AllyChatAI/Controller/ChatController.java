@@ -58,7 +58,7 @@ public class ChatController {
             return ResponseEntity.badRequest().body(chatResponse);
         }
         Integer conversationUserId = extractOptionalUserId(httpRequest);
-        if (httpRequest.getHeader("Authorization") != null && conversationUserId == null) {
+        if (httpRequest != null && httpRequest.getHeader("Authorization") != null && conversationUserId == null) {
             chatResponse.setResponse(useBisaya
                 ? "Nahuman na ang imong sesyon. Palihog sulod pag-usab aron ipadayon ang na-save nga panag-istorya."
                 : "Your session has expired. Please sign in again to continue your saved conversation.");
@@ -215,8 +215,10 @@ public class ChatController {
         System.out.println("Response generated (" + response.length() + " chars)");
         Integer userId = extractOptionalUserId(httpRequest);
         saveHistoryIfAuthenticated(userId, request.getMessage(), chatResponse);
-        auditLogService.log(userId, "AI_QUERY", "AI", "CHAT", null,
-            "Processed AI legal inquiry with RAG " + (request.isUseRAG() ? "enabled" : "disabled"), "SUCCESS");
+        if (httpRequest != null) {
+            auditLogService.log(userId, "AI_QUERY", "AI", "CHAT", null,
+                "Processed AI legal inquiry with RAG " + (request.isUseRAG() ? "enabled" : "disabled"), "SUCCESS");
+        }
         
         return ResponseEntity.ok(chatResponse);
     }
@@ -290,6 +292,7 @@ public class ChatController {
     }
 
     private Integer extractOptionalUserId(HttpServletRequest request) {
+        if (request == null) return null; // Isolated demo calls never inherit a real account.
         try {
             String authHeader = request.getHeader("Authorization");
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {

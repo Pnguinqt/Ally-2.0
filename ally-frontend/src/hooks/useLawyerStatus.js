@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { getAuthData } from '../utils/auth.jsx';
 import { userService } from '../services/userService.js';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const useLawyerStatus = () => {
+  const demo = useDemoRuntime();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isLawyer, setIsLawyer] = useState(false);
@@ -11,7 +13,7 @@ const useLawyerStatus = () => {
     const fetchLawyerStatus = async () => {
       try {
         setLoading(true);
-        const authData = getAuthData();
+        const authData = demo?.auth || getAuthData();
 
         if (!authData) {
           setIsLawyer(false);

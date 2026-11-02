@@ -39,7 +39,24 @@ public class DocumentSummaryService {
         ensureSupported(fileType);
 
         try {
-            String extractedText = normalizeText(extractText(fileType, documentService.readDocumentBytes(document)));
+            return summarizeBytes(document.getDocument_id(), document.getDocumentName(), fileType,
+                documentService.readDocumentBytes(document));
+        } catch (java.io.IOException exception) {
+            throw new UnreadableDocumentException("The document text could not be extracted.", exception);
+        }
+    }
+
+    /** Transient demo upload: no document record, case association, or storage write. */
+    public DocumentSummaryResponse summarizeDemoPdf(String name, byte[] content) {
+        if (content.length < 5 || !new String(content, 0, 5, StandardCharsets.US_ASCII).equals("%PDF-")) {
+            throw new UnreadableDocumentException("Please upload a valid PDF file.");
+        }
+        return summarizeBytes(0, name, "pdf", content);
+    }
+
+    private DocumentSummaryResponse summarizeBytes(int id, String name, String fileType, byte[] content) {
+        try {
+            String extractedText = normalizeText(extractText(fileType, content));
             if (extractedText.isBlank()) {
                 throw new UnreadableDocumentException(
                     "No readable text was found. Scanned PDFs and image files need OCR before they can be summarized.");
@@ -49,11 +66,11 @@ public class DocumentSummaryService {
             boolean truncated = extractedText.length() > limit;
             String summarySource = truncated ? extractedText.substring(0, limit) : extractedText;
             String summary = deepSeekChatService.summarizeDocument(
-                document.getDocumentName(), summarySource, truncated);
+                name, summarySource, truncated);
 
             return new DocumentSummaryResponse(
-                document.getDocument_id(),
-                document.getDocumentName(),
+                id,
+                name,
                 summary,
                 truncated,
                 Instant.now());

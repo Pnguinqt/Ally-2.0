@@ -1,17 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import {
-    sendMessage,
-    subscribeToMessages,
-    editMessage,
-    deleteMessage,
-    markChatAsRead
-} from '../services/chatService';
+import * as productionMessaging from '../services/chatService';
+import { useDemoRuntime } from '../demo/DemoContext';
 import { fetchUserDetails } from '../utils/auth';
 import MarkdownText from './shared/MarkdownText';
 
 const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, receiverName, compact = false }) => {
+    const demo = useDemoRuntime();
+    const { sendMessage, subscribeToMessages, editMessage, deleteMessage, markChatAsRead } = demo?.messaging || productionMessaging;
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [editingMessage, setEditingMessage] = useState(null);
@@ -63,7 +60,7 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
                     return;
                 }
                 
-                const receiverData = await fetchUserDetails(receiverId);
+                const receiverData = demo ? await demo.getUser(receiverId) : await fetchUserDetails(receiverId);
                 setReceiver(receiverData);
             } catch (error) {
                 console.error('Failed to load receiver:', error);
@@ -102,7 +99,7 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
             // Only redirect if not in compact mode (inline chat/modal)
             // When compact=true, we're in a modal and should stay there
             if (!compact) {
-                navigate(`/messages/${chatroomId}`, { replace: true });
+                navigate(demo ? demo.path(`/messages/${chatroomId}`) : `/messages/${chatroomId}`, { replace: true });
             }
 
         } catch (error) {
@@ -158,6 +155,7 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
 
     return (
         <div className="flex flex-col h-full overflow-hidden bg-white">
+            {demo && <p className="border-b border-blue-100 bg-blue-50 px-4 py-2 text-xs leading-5 text-blue-800">Practice messages stay in this demo. No lawyer is contacted.</p>}
             {/* Chat Header - Hide in compact mode */}
             {!compact && (
                 <div className="flex items-center flex-shrink-0 p-4 bg-white border-b shadow-sm">

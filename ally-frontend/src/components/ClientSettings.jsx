@@ -4,8 +4,10 @@ import { User, Shield, Trash2, Bell } from 'lucide-react';
 import { toast } from 'sonner';
 import Section from './shared/Section';
 import InputField from './shared/InputField';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const ClientSettings = ({ user, embedded = false }) => {
+  const demo = useDemoRuntime();
   // Initialize state from user prop
   const [profile, setProfile] = useState({
     name: user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Client',
@@ -20,8 +22,8 @@ const ClientSettings = ({ user, embedded = false }) => {
   const [selectedProfileFile, setSelectedProfileFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
-  const profilePhoto = localStorage.getItem('profilePhoto');
-  const token = localStorage.getItem('token');
+  const profilePhoto = demo ? null : localStorage.getItem('profilePhoto');
+  const token = demo ? null : localStorage.getItem('token');
 
   const [personalInfo, setPersonalInfo] = useState({
     firstName: user?.firstName || '',
@@ -40,6 +42,7 @@ const ClientSettings = ({ user, embedded = false }) => {
 
   // Fetch user data on component mount
   useEffect(() => {
+    if (demo) return;
     fetch(`${import.meta.env.VITE_API_BASE_URL}/users/getUser/${user.id}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -193,7 +196,7 @@ const ClientSettings = ({ user, embedded = false }) => {
     setSelectedProfileFile(null);
     
     // Clear profile photo from localStorage
-    localStorage.removeItem('profilePhoto');
+    if (!demo) localStorage.removeItem('profilePhoto');
     
     // Reset file input
     const fileInput = document.getElementById('profile-photo-input');
@@ -206,6 +209,12 @@ const ClientSettings = ({ user, embedded = false }) => {
 
   // Modified handleUpdate function
   const handleUpdate = async () => {
+    if (demo) {
+      demo.updateProfile({ ...personalInfo, fullName: `${personalInfo.firstName} ${personalInfo.lastName}`,
+        address: address.line1, city: address.cityState, province: address.province, zip: address.zipCode });
+      toast.success('Demo profile updated locally.');
+      return;
+    }
     try {
       let profilePhotoUrl = null;
       

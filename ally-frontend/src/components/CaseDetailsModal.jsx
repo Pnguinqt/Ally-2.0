@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, User, FileText, CheckCircle, XCircle, AlertCircle, Clock, CalendarPlus, Upload, Eye, Trash2, Pencil } from 'lucide-react';
 import { BookingModal } from './BookingModal';
-import { documentService } from '../services/documentService';
+import { documentService as productionDocumentService } from '../services/documentService';
+import { useDemoRuntime } from '../demo/DemoContext';
 import { getAuthData } from '../utils/auth';
 import { useNavigate } from 'react-router-dom';
 
@@ -15,6 +16,8 @@ export const CaseDetailsModal = ({
   onEditCase,
   onAppointmentBooked 
 }) => {
+  const demo = useDemoRuntime();
+  const documentService = demo?.documentService || productionDocumentService;
   const navigate = useNavigate();
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [documentCount, setDocumentCount] = useState(0);
@@ -31,7 +34,7 @@ export const CaseDetailsModal = ({
   const loadDocumentCount = async () => {
     try {
       setLoadingDocuments(true);
-      const authData = getAuthData();
+      const authData = demo?.auth || getAuthData();
       if (!authData) {
         console.error('Not authenticated when trying to load document count');
         setDocumentCount(0);
@@ -49,6 +52,7 @@ export const CaseDetailsModal = ({
   };
 
   const handleCompleteCase = async () => {
+    if (demo) return; // This client demo does not perform lawyer-only case completion.
     if (case_.status !== 'ACCEPTED') {
       console.warn('Cannot complete case that is not accepted');
       return;
@@ -80,7 +84,7 @@ export const CaseDetailsModal = ({
   }
 
   const handleNavigateToDocuments = () => {
-    navigate(`/documents/${case_.caseId}`);
+    navigate(demo ? demo.path(`/documents/${case_.caseId}`) : `/documents/${case_.caseId}`);
     onClose();
   };
 

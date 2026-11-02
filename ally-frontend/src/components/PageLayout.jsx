@@ -6,9 +6,11 @@ import ChatSidebar from './ChatSidebar';
 import { useSidebar } from '../contexts/SidebarContext';
 import useLawyerStatus from '../hooks/useLawyerStatus.js';
 import LawyerApprovalWarning from './LawyerApprovalWarning.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const PageLayout = ({ children }) => {
-  const isLoggedIn = isAuthenticated();
+  const demo = useDemoRuntime();
+  const isLoggedIn = Boolean(demo) || isAuthenticated();
   const { isExpanded } = useSidebar();
   const location = useLocation();
   const { status, loading, isLawyer } = useLawyerStatus();
@@ -28,7 +30,7 @@ const PageLayout = ({ children }) => {
   };
 
   const showWarning = shouldShowWarning();
-  const isWorkspace = location.pathname === '/workspace';
+  const isWorkspace = location.pathname === (demo ? '/demo/workspace' : '/workspace');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -38,7 +40,7 @@ const PageLayout = ({ children }) => {
       {/* Main Content Area */}
       <div className={`transition-all duration-300 ${
         isLoggedIn 
-          ? `md:${isExpanded ? 'ml-[240px]' : 'ml-[60px]'}`
+          ? (isExpanded ? 'md:ml-[240px]' : 'md:ml-[60px]')
           : ''
       }`}>
         {/* Navigation Bar */}
@@ -56,8 +58,8 @@ const PageLayout = ({ children }) => {
         )}
         
         {/* Main Content - adjust padding if warning is shown */}
-        <main className={showWarning ? "pt-28" : isWorkspace ? "pt-16" : "pt-12"}
-          style={isWorkspace ? { '--workspace-offset': showWarning ? '7rem' : '4rem' } : undefined}>
+        <main className={demo ? 'pt-16' : showWarning ? "pt-28" : isWorkspace ? "pt-16" : "pt-12"}
+          style={isWorkspace ? { '--workspace-offset': demo ? '7rem' : showWarning ? '7rem' : '4rem' } : undefined}>
           {children}
         </main>
       </div>

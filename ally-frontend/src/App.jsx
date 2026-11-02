@@ -34,6 +34,7 @@ import PageLayout from './components/PageLayout.jsx'
 import { validateAndGetAuthData } from './utils/auth.jsx'
 import NotFound from './pages/NotFound'
 import LanguageSwitcher from './components/LanguageSwitcher'
+import RespondentDemoPage from './pages/RespondentDemoPage'
 
 const LayoutRoutes = () => (
   <PageLayout>
@@ -47,6 +48,11 @@ function AppContent() {
   useEffect(() => {
     const validateAuth = async () => {
       setIsValidating(true);
+      // The respondent space must not validate or alter an existing real login.
+      if (/^\/demo(?:\/|$)/.test(window.location.pathname)) {
+        setIsValidating(false);
+        return;
+      }
       
       // Only validate if there's a token in localStorage
       const token = localStorage.getItem('token');
@@ -78,6 +84,7 @@ function AppContent() {
         <Routes>
           <Route path="/oauth2-redirect" element={<OAuth2RedirectHandler />} />
           <Route path="/" element={<LandingPage />} />
+          <Route path="/demo/*" element={<RespondentDemoPage />} />
           <Route path="/signup" element={<SignUpPage />} />
           <Route path="/signup/client" element={<ClientRegistrationForm />} />
           <Route path="/signup/lawyer" element={<LawyerRegistrationForm />} />        

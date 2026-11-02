@@ -8,15 +8,17 @@ import MessageDropdown from './MessageDropdown';
 import { useSidebar } from '../contexts/SidebarContext';
 import { fetchActiveConversations } from '../services/chatService';
 import useLawyerStatus from '../hooks/useLawyerStatus.js';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const NavigationBar = () => {
+  const demo = useDemoRuntime();
   const navigate = useNavigate();
   const location = useLocation();
-  const isLoggedIn = isAuthenticated();
+  const isLoggedIn = Boolean(demo) || isAuthenticated();
   const { isExpanded } = useSidebar();
   
   // Memoize authData to prevent infinite re-renders
-  const authData = useMemo(() => getAuthData(), [isLoggedIn]);
+  const authData = useMemo(() => demo?.auth || getAuthData(), [isLoggedIn, demo]);
   const { status, loading: statusLoading, isLawyer } = useLawyerStatus();
   
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -42,6 +44,7 @@ const NavigationBar = () => {
   // Fetch user details and conversations when logged in
   useEffect(() => {
     const getUserDetails = async () => {
+      if (demo) { setUserDetails(demo.profile); await loadConversations(-1); return; }
       if (isLoggedIn && authData?.userId && !isLoadingUser) {
         setIsLoadingUser(true);
         try {
@@ -60,7 +63,7 @@ const NavigationBar = () => {
     };
 
     getUserDetails();
-  }, [isLoggedIn, authData?.userId]);
+  }, [isLoggedIn, authData?.userId, demo?.profile]);
 
   // Load conversations
   const loadConversations = async (userId) => {
@@ -68,7 +71,7 @@ const NavigationBar = () => {
     
     setLoadingConversations(true);
     try {
-      const activeConvos = await fetchActiveConversations(userId);
+      const activeConvos = demo ? await demo.messaging.fetchActiveConversations(userId) : await fetchActiveConversations(userId);
       setConversations(activeConvos);
     } catch (error) {
       console.error('Error loading conversations:', error);
@@ -115,6 +118,7 @@ const NavigationBar = () => {
 
   const handleLogout = () => {
     setIsDropdownOpen(false);
+    if (demo) { navigate('/'); return; }
     logout();
   };
 
@@ -169,7 +173,7 @@ const NavigationBar = () => {
   return (
     <nav className={`fixed top-0 z-40 bg-white shadow-sm h-16 transition-all duration-300 ${
       isLoggedIn 
-        ? `md:${isExpanded ? 'left-[240px]' : 'left-[60px]'} left-0 right-0` 
+        ? `${isExpanded ? 'md:left-[240px]' : 'md:left-[60px]'} left-0 right-0`
         : 'left-0 right-0'
     }`}>
       <div className="h-full px-4 md:px-8">
@@ -190,6 +194,7 @@ const NavigationBar = () => {
                   {/* Message and Notification Icons */}
                   <div className="relative" ref={notificationRef}>
                     <button
+                      aria-label="Notifications"
                       onClick={toggleNotifications}
                       className={`relative flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
                         isNotificationOpen ? 'bg-blue-50' : 'hover:bg-gray-50'
@@ -213,6 +218,7 @@ const NavigationBar = () => {
 
                   <div className="relative" ref={messageRef}>
                     <button
+                      aria-label="Messages"
                       onClick={toggleMessages}
                       className={`relative flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
                         isMessageOpen ? 'bg-blue-50' : 'hover:bg-gray-50'

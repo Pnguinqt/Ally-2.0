@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Chat from './Chat';
 import { fetchUserDetails } from '../utils/auth';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/modalScrollLock';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const ChatModal = ({ 
   isOpen, 
@@ -12,6 +13,7 @@ const ChatModal = ({
   currentUserName, 
   receiverName 
 }) => {
+  const demo = useDemoRuntime();
   const [isLoading, setIsLoading] = useState(false);
   const [receiverDetails, setReceiverDetails] = useState(null);
   const [error, setError] = useState(null);
@@ -39,7 +41,7 @@ const ChatModal = ({
       setIsLoading(true);
       setError(null);
       
-      fetchUserDetails(receiverId)
+      (demo ? demo.getUser(receiverId) : fetchUserDetails(receiverId))
         .then(details => {
           setReceiverDetails(details);
         })

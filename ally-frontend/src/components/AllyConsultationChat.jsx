@@ -2,7 +2,10 @@ import RetrievedCases, { SIMILARITY_NOTICE } from './RetrievedCases';
 import { historyMessages, mergeHistory } from '../services/consultationHistory';
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Search, MessageSquarePlus, History, RotateCcw, Trash2 } from 'lucide-react';
-import { sendConsultationMessage, checkRagHealth, getConsultationHistory, deleteConsultationHistory } from '../services/allyConsultationService';
+import * as productionChatService from '../services/allyConsultationService';
+import { checkRagHealth } from '../services/allyConsultationService';
+import { useDemoRuntime } from '../demo/DemoContext';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import MarkdownText from './shared/MarkdownText';
 import AIAnswerCard from './chat-ui/AIAnswerCard';
 
@@ -16,16 +19,25 @@ const readSavedChat = () => {
 };
 
 const AllyConsultationChat = () => {
-  const [savedChat] = useState(readSavedChat);
+  const demo = useDemoRuntime();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { sendConsultationMessage, getConsultationHistory, deleteConsultationHistory } = demo?.chatService || productionChatService;
+  const [savedChat] = useState(() => demo ? demo.getChat() : readSavedChat());
   const [conversationId, setConversationId] = useState(() => savedChat.conversationId || crypto.randomUUID());
   const activeConversation = useRef(conversationId);
-  const [pending, setPending] = useState(localStorage.getItem('token') ? savedChat.pending || null : null);
+  const [pending, setPending] = useState(!demo && localStorage.getItem('token') ? savedChat.pending || null : null);
   const [messages, setMessages] = useState(Array.isArray(savedChat.messages) ? savedChat.messages : []);
   const messageIdCounter = useRef(1);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [hasChatStarted, setHasChatStarted] = useState(Boolean(savedChat.messages?.length)); // Restore the active conversation
   const [useRAG, setUseRAG] = useState(savedChat.useRAG ?? true); // Persist case-search preference
+  useEffect(() => {
+    if (!demo) return;
+    const mode = searchParams.get('mode');
+    if (mode === 'normal' || mode === 'case-search') setUseRAG(mode === 'case-search');
+  }, [demo, searchParams, location.key]);
   const [ragAvailable, setRagAvailable] = useState(true); // NEW: RAG service status
   const [ragChecking, setRagChecking] = useState(false);
   const [ragHealthVersion, setRagHealthVersion] = useState(0);
@@ -36,13 +48,14 @@ const AllyConsultationChat = () => {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
+    if (demo) { demo.saveChat({ conversationId, messages, useRAG }); return; }
     try { localStorage.setItem(storageKey(), JSON.stringify({ conversationId, messages, pending, useRAG })); }
     catch { console.error('Unable to save the local chat copy.'); }
   }, [conversationId, messages, pending, useRAG]);
 
   // Recover the server's saved reply even if the browser refreshed during generation.
   useEffect(() => {
-    if (!localStorage.getItem('token')) return;
+    if (demo || !localStorage.getItem('token')) return;
     let cancelled = false;
     let timer;
     const restore = async () => {
@@ -114,7 +127,7 @@ const AllyConsultationChat = () => {
   }, []);
 
   const loadHistory = async () => {
-    if (!localStorage.getItem('token')) return;
+    if (!demo && !localStorage.getItem('token')) return;
 
     setHistoryLoading(true);
     try {
@@ -170,13 +183,14 @@ const AllyConsultationChat = () => {
       
       setMessages(prev => [...prev.filter(message => !(message.sender === 'ai' && message.requestId === requestId)), aiMessage]);
       loadHistory();
-    } catch {
+    } catch (error) {
       if (activeConversation.current !== chatId || activeRequest.current !== requestId) return;
-      if (localStorage.getItem('token')) { recovering = true; return; }
+      if (!demo && localStorage.getItem('token')) { recovering = true; return; }
       const errorMessage = {
         id: `msg-${Date.now()}-${messageIdCounter.current++}`,
-        text: "Sorry, I'm having trouble connecting to the legal assistant. Please try again later.",
+        text: demo ? error.message || 'Unable to reach the legal assistant. Please try again.' : "Sorry, I'm having trouble connecting to the legal assistant. Please try again later.",
         sender: 'ai',
+        isError: true,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       
@@ -208,7 +222,8 @@ const AllyConsultationChat = () => {
     const pendingRequest = { requestId, startedAt: Date.now() };
     setPending(pendingRequest);
     // Save before starting the request so an immediate refresh retains the question.
-    try { localStorage.setItem(storageKey(), JSON.stringify({ conversationId, messages: [...messages, userMessage], pending: pendingRequest, useRAG })); } catch { /* Server history remains available */ }
+    if (demo) demo.saveChat({ conversationId, messages: [...messages, userMessage], useRAG });
+    else try { localStorage.setItem(storageKey(), JSON.stringify({ conversationId, messages: [...messages, userMessage], pending: pendingRequest, useRAG })); } catch { /* Server history remains available */ }
     getAIResponse(inputMessage, conversationId, requestId);
   };
 
@@ -289,6 +304,8 @@ const AllyConsultationChat = () => {
               )}
               <button
                 onClick={() => setUseRAG(!useRAG)}
+                aria-pressed={useRAG}
+                aria-label={ragAvailable ? `Case Search: ${useRAG ? 'ON' : 'OFF'}` : 'Case Search Unavailable'}
                 disabled={!ragAvailable}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
                   useRAG
@@ -372,7 +389,7 @@ const AllyConsultationChat = () => {
         </div>
       ) : (
         // ACTIVE CHAT STATE - After first message (clean, minimal design)
-        <div className="flex h-[calc(100dvh-3rem)] min-h-0 w-full flex-col overflow-hidden">
+        <div className={`flex ${demo ? 'h-[calc(100dvh-7rem)]' : 'h-[calc(100dvh-3rem)]'} min-h-0 w-full flex-col overflow-hidden`}>
           {/* Messages Area */}
           <div className="mx-auto min-h-0 w-full max-w-4xl flex-1 overflow-y-auto px-4 py-8">
             <div className="flex min-h-full flex-col justify-end space-y-6">
@@ -438,6 +455,8 @@ const AllyConsultationChat = () => {
                 <div className="flex min-w-0 flex-wrap items-center gap-3">
                   <button
                     onClick={() => setUseRAG(!useRAG)}
+                    aria-pressed={useRAG}
+                    aria-label={ragAvailable ? `Case Search: ${useRAG ? 'ON' : 'OFF'}` : 'Case Search Unavailable'}
                     disabled={!ragAvailable}
                     className={`flex max-w-full items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
                       useRAG 

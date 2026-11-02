@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Send, Save, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { caseService } from '../services/caseService.jsx';
+import { caseService as productionCaseService } from '../services/caseService.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
 import { getAuthData } from '../utils/auth.jsx';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/modalScrollLock';
 
 const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) => {
+  const demo = useDemoRuntime();
+  const caseService = demo?.caseService || productionCaseService;
   const navigate = useNavigate();
   const isEditing = Boolean(caseToEdit);
   const [formData, setFormData] = useState({
@@ -18,7 +21,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
   const [errors, setErrors] = useState({});
   const [lawyers, setLawyers] = useState([]);
   const [lawyerId, setLawyerId] = useState(caseToEdit?.lawyer?.userId?.toString() || '');
-  const [caseType, setCaseType] = useState(caseToEdit?.caseType || '');
+  const [caseType, setCaseType] = useState(demo ? 'CIVIL' : caseToEdit?.caseType || '');
   const [availableCaseTypes, setAvailableCaseTypes] = useState(
     caseToEdit?.caseType ? [caseToEdit.caseType] : []
   );
@@ -33,6 +36,11 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
   }, []);
 
   useEffect(() => {
+    if (demo) {
+      demo.loadLawyers().then(data => { setLawyers(data); setAvailableCaseTypes(['CIVIL']); })
+        .catch(error => setError(error.message || 'Unable to load verified lawyers. Close and try again.'));
+      return;
+    }
     const token = localStorage.getItem('token');
 
     fetch(`${import.meta.env.VITE_API_BASE_URL}/lawyers/verified`, {
@@ -76,7 +84,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
       if (lawyer && lawyer.specialization && lawyer.specialization.length > 0) {
         // Filter available case types to only show this lawyer's specializations
         const lawyerSpecializations = lawyer.specialization.filter(spec => spec && spec.trim());
-        setAvailableCaseTypes(lawyerSpecializations.sort());
+        setAvailableCaseTypes(demo ? ['CIVIL'] : lawyerSpecializations.sort());
         setLawyerId(selectedLawyer.id.toString());
         setFilteredLawyers([lawyer]); // Only show this lawyer
         // Don't auto-set case type - let user choose
@@ -87,7 +95,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
   // Filter lawyers based on selected case type
   useEffect(() => {
     if (caseType) {
-      const filtered = lawyers.filter(lawyer =>
+      const filtered = demo ? lawyers : lawyers.filter(lawyer =>
         lawyer.specialization &&
         lawyer.specialization.includes(caseType)
       );
@@ -97,7 +105,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
       // BUT only if it's not a pre-selected lawyer
       if (lawyerId && !selectedLawyer) {
         const currentLawyer = lawyers.find(l => l.userId.toString() === lawyerId);
-        if (!currentLawyer || !currentLawyer.specialization.includes(caseType)) {
+        if (!currentLawyer || (!demo && !currentLawyer.specialization.includes(caseType))) {
           setLawyerId('');
         }
       }
@@ -166,7 +174,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
     setError(null);
 
     try {
-      const authData = getAuthData();
+      const authData = demo?.auth || getAuthData();
       if (!authData) {
         throw new Error(`You must be logged in to ${isEditing ? 'edit' : 'submit'} a case`);
       }
@@ -199,7 +207,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
             : 'Case details updated successfully.'
         );
       } else {
-        navigate('/my-cases');
+        navigate(demo ? demo.path('/my-cases') : '/my-cases');
       }
     } catch (err) {
       console.error(`Error ${isEditing ? 'updating' : 'submitting'} case:`, err);
