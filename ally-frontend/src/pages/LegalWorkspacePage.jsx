@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, History, Loader2, NotebookPen, Send, Trash2, UserRound } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, Loader2, NotebookPen, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { caseService as productionCaseService } from '../services/caseService.jsx';
-import * as productionChatService from '../services/allyConsultationService.js';
 import { documentService as productionDocumentService } from '../services/documentService.js';
 import { useDemoRuntime } from '../demo/DemoContext';
 import { useSearchParams } from 'react-router-dom';
@@ -11,34 +10,26 @@ import CaseDocumentManager from '../components/CaseDocumentManager.jsx';
 import CaseHearingCalendar from '../components/CaseHearingCalendar.jsx';
 import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import WorkspaceCaseSidebar from '../components/WorkspaceCaseSidebar.jsx';
-import MarkdownText from '../components/shared/MarkdownText.jsx';
 
 const LegalWorkspacePage = () => {
   const demo = useDemoRuntime();
   const caseService = demo?.caseService || productionCaseService;
   const documentService = demo?.documentService || productionDocumentService;
-  const { deleteConsultationHistory, getConsultationHistory, sendConsultationMessage } = demo?.chatService || productionChatService;
   const [searchParams] = useSearchParams();
   const [authData, setAuthData] = useState(null);
   const [cases, setCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [documentCounts, setDocumentCounts] = useState({});
-  const [aiHistory, setAiHistory] = useState([]);
   const [notes, setNotes] = useState('');
   const [caseListTab, setCaseListTab] = useState('recent');
   const [caseSidebarCollapsed, setCaseSidebarCollapsed] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [aiReply, setAiReply] = useState(null);
-  const [selectedHistoryId, setSelectedHistoryId] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const aiRequestId = useRef(0);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (demo && ['overview', 'hearings', 'documents', 'notes', 'ai'].includes(tab)) setActiveTab(tab);
+    if (tab === 'ai') setActiveTab('overview');
+    else if (demo && ['overview', 'hearings', 'documents', 'notes'].includes(tab)) setActiveTab(tab);
   }, [demo, searchParams]);
 
   useEffect(() => {
@@ -70,13 +61,10 @@ const LegalWorkspacePage = () => {
         setCases(visibleCases);
         setCaseListTab(initialCases.length > 0 ? 'recent' : 'completed');
         setSelectedCaseId(initialCases[0]?.caseId || visibleCases[0]?.caseId || null);
-        const [counts, history] = await Promise.all([
-          Promise.all(visibleCases.map(async item => [item.caseId, await documentService.getDocumentCount(item.caseId)])),
-          authData.accountType !== 'ADMIN' ? getConsultationHistory(25) : Promise.resolve([]),
-        ]);
+        const counts = await Promise.all(visibleCases.map(async item =>
+          [item.caseId, await documentService.getDocumentCount(item.caseId)]));
         if (!active) return;
         setDocumentCounts(Object.fromEntries(counts));
-        setAiHistory(history);
       } catch (error) {
         if (active) {
           console.error('Error loading legal workspace:', error);
@@ -99,32 +87,12 @@ const LegalWorkspacePage = () => {
     setNotes(demo ? demo.getNotes() : localStorage.getItem(getNotesKey(selectedCaseId, authData.userId)) || '');
   }, [selectedCaseId, authData]);
 
-  useEffect(() => {
-    aiRequestId.current += 1;
-    setAiPrompt('');
-    setAiReply(null);
-    setSelectedHistoryId(null);
-    setAiLoading(false);
-    return () => { aiRequestId.current += 1; };
-  }, [selectedCaseId]);
-
   const refreshDocumentCount = async caseId => {
     try {
       const count = await documentService.getDocumentCount(caseId);
       setDocumentCounts(current => ({ ...current, [caseId]: count }));
     } catch (error) {
       console.error('Error refreshing document count:', error);
-    }
-  };
-
-  const refreshAiHistory = async () => {
-    setHistoryLoading(true);
-    try {
-      setAiHistory(await getConsultationHistory(25));
-    } catch {
-      toast.error('Failed to refresh AI history');
-    } finally {
-      setHistoryLoading(false);
     }
   };
 
@@ -149,66 +117,6 @@ const LegalWorkspacePage = () => {
     if (!authData || !selectedCaseId) return;
     if (demo) demo.saveNotes(value);
     else localStorage.setItem(getNotesKey(selectedCaseId, authData.userId), value);
-  };
-
-  const askWorkspaceAi = async (event) => {
-    event.preventDefault();
-    if (!aiPrompt.trim() || !selectedCase) return;
-
-    const requestId = ++aiRequestId.current;
-    setAiLoading(true);
-    try {
-      const contextualPrompt = buildWorkspacePrompt(selectedCase, notes, aiPrompt);
-      const response = await sendConsultationMessage(contextualPrompt, true);
-      if (requestId !== aiRequestId.current) return;
-      setAiReply(response);
-      setSelectedHistoryId(null);
-      setAiPrompt('');
-      const history = await getConsultationHistory(25);
-      setAiHistory(history);
-    } catch (error) {
-      if (requestId !== aiRequestId.current) return;
-      console.error('Error asking workspace AI:', error);
-      toast.error('Failed to ask AI from workspace');
-    } finally {
-      if (requestId === aiRequestId.current) setAiLoading(false);
-    }
-  };
-
-  const openHistoryInChat = (item) => {
-    setSelectedHistoryId(item.historyId);
-    setAiPrompt(item.userMessage || '');
-    setAiReply({
-      response: item.aiResponse,
-      relevantCases: null,
-      caseCount: item.caseCount || 0,
-      confidence: item.confidence || null,
-      ragEnabled: item.ragEnabled || false,
-      timestamp: item.createdAt
-    });
-  };
-
-  const deleteHistoryItem = async (item, event) => {
-    event.stopPropagation();
-
-    const confirmed = window.confirm('Delete this AI chat from your history?');
-    if (!confirmed) return;
-
-    try {
-      await deleteConsultationHistory(item.historyId);
-      setAiHistory(prev => prev.filter(historyItem => historyItem.historyId !== item.historyId));
-
-      if (selectedHistoryId === item.historyId) {
-        setSelectedHistoryId(null);
-        setAiPrompt('');
-        setAiReply(null);
-      }
-
-      toast.success('AI chat deleted');
-    } catch (error) {
-      console.error('Error deleting AI chat history:', error);
-      toast.error('Failed to delete AI chat');
-    }
   };
 
   const participant = getParticipant(selectedCase, authData?.accountType);
@@ -334,77 +242,6 @@ const LegalWorkspacePage = () => {
                   </div>
                 </WorkspacePanel>
 
-                <WorkspacePanel id="ai" activeTab={activeTab}>
-                  <div className="grid items-start gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_260px]">
-                    <div className="min-w-0 p-4 bg-white border border-blue-100 rounded-lg shadow-sm">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Bot className="w-5 h-5 text-blue-600" />
-                        <h3 className="text-base font-semibold text-gray-900">Ask AI About This Case</h3>
-                      </div>
-                      <form onSubmit={askWorkspaceAi} className="flex flex-col gap-3 md:flex-row">
-                        <input
-                          value={aiPrompt}
-                          onChange={(event) => setAiPrompt(event.target.value)}
-                          aria-label="Question for the AI assistant"
-                          placeholder="Ask about next steps, legal issues, or documents..."
-                          className="flex-1 px-4 py-3 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                          disabled={aiLoading}
-                        />
-                        <button
-                          type="submit"
-                          disabled={!aiPrompt.trim() || aiLoading}
-                          className="inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                        >
-                          {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                          Ask
-                        </button>
-                      </form>
-
-                      {aiReply?.response && (
-                        <div className="p-4 mt-4 border border-blue-100 rounded-lg bg-blue-50">
-                          <div className="flex items-center justify-between gap-3 mb-2">
-                            <p className="text-sm font-semibold text-blue-900">
-                              {selectedHistoryId ? 'Restored AI Chat' : 'AI Response'}
-                            </p>
-                            {aiReply.confidence && (
-                              <span className="text-xs font-medium text-blue-700">{aiReply.confidence}</span>
-                            )}
-                          </div>
-                          {selectedHistoryId && aiPrompt && (
-                            <div className="p-3 mb-3 text-sm bg-white border border-blue-100 rounded-md">
-                              <p className="text-xs font-semibold text-gray-500">Question</p>
-                              <p className="mt-1 text-gray-800">{aiPrompt}</p>
-                            </div>
-                          )}
-                          <div className="max-h-[45dvh] overflow-y-auto overscroll-contain text-sm leading-6 text-gray-700">
-                            <MarkdownText text={aiReply.response} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <aside aria-label="AI consultation history" className="min-w-0 p-4 bg-white border border-gray-200 rounded-lg">
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <h3 className="inline-flex items-center gap-2 text-sm font-semibold text-gray-900"><History className="w-4 h-4 text-blue-600" />AI History</h3>
-                        <button type="button" disabled={historyLoading} onClick={refreshAiHistory}
-                          className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50">{historyLoading ? 'Refreshing…' : 'Refresh'}</button>
-                      </div>
-                      <div className="space-y-2 max-h-[45dvh] overflow-y-auto overscroll-contain">
-                        {aiHistory.length === 0 ? <p className="text-sm text-gray-500">No saved AI consultations yet.</p> : aiHistory.map(item => (
-                          <div key={item.historyId} className={`flex items-start gap-1 rounded-md border p-2 ${selectedHistoryId === item.historyId ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}>
-                            <button type="button" onClick={() => openHistoryInChat(item)} className="flex-1 min-w-0 text-left rounded-sm focus-visible:outline-blue-500">
-                              <p className="text-xs text-gray-500">{formatDateTime(item.createdAt)}</p>
-                              <p className="mt-1 text-sm font-medium text-gray-900 line-clamp-2">{item.userMessage}</p>
-                              <p className="mt-1 text-xs text-gray-500 line-clamp-2">{item.aiResponse}</p>
-                            </button>
-                            <button type="button" onClick={event => deleteHistoryItem(item, event)} className="p-2 text-gray-400 rounded-md shrink-0 hover:text-red-600 hover:bg-red-50" aria-label="Delete AI chat">
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </aside>
-                  </div>
-                </WorkspacePanel>
               </div>
             </div>
           )}
@@ -495,26 +332,6 @@ const sortCasesByRecency = caseItems => [...caseItems].sort((first, second) => {
 });
 
 const getNotesKey = (caseId, userId) => `ally.workspace.notes.${userId}.${caseId}`;
-
-const buildWorkspacePrompt = (caseItem, notes, question) => {
-  const caseContext = [
-    `Case ID: ${caseItem.caseId}`,
-    `Title: ${caseItem.title || 'Untitled'}`,
-    `Type: ${caseItem.caseType || 'General'}`,
-    `Status: ${caseItem.status || 'Unknown'}`,
-    `Urgency: ${caseItem.urgencyLevel || 'Not specified'}`,
-    `Description: ${caseItem.description || 'No description provided'}`
-  ].join('\n');
-
-  return [
-    'Use this case workspace context when answering. Keep the answer practical and focused on Philippine law.',
-    '',
-    caseContext,
-    notes ? `\nWorkspace notes:\n${notes}` : '',
-    '',
-    `User question: ${question}`
-  ].filter(Boolean).join('\n');
-};
 
 const getCaseTimeline = (caseItem) => {
   if (!caseItem) return [];

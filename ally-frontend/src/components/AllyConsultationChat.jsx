@@ -1,7 +1,7 @@
 import RetrievedCases, { SIMILARITY_NOTICE } from './RetrievedCases';
 import { historyMessages, mergeHistory } from '../services/consultationHistory';
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Search, MessageSquarePlus, History, RotateCcw, Trash2 } from 'lucide-react';
+import { AlertTriangle, Bot, Send, Search, MessageSquarePlus, History, RotateCcw, Trash2 } from 'lucide-react';
 import * as productionChatService from '../services/allyConsultationService';
 import { checkRagHealth } from '../services/allyConsultationService';
 import { useDemoRuntime } from '../demo/DemoContext';
@@ -346,7 +346,10 @@ const AllyConsultationChat = ({ embedded = false, visible = true }) => {
           <button type="submit" aria-label="Send message to ALLY" disabled={!inputMessage.trim() || isTyping || Boolean(pending)}
             className="p-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400"><Send className="w-4 h-4" /></button>
         </form>
-        <p className="mt-2 text-center text-[10px] text-gray-500">Legal information, not legal advice. Verify sources.</p>
+        <p role="note" className="flex items-start gap-2 p-2 mt-2 text-xs leading-5 text-amber-800 border border-amber-200 rounded-lg bg-amber-50">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+          <span>AI-generated responses provide general information and do not replace a lawyer. Please consult your lawyer to verify any advice.</span>
+        </p>
       </div>
     </div>
   );

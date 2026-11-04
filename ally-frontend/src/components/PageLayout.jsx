@@ -60,12 +60,12 @@ const PageLayout = ({ children }) => {
         )}
         
         {/* Main Content - adjust padding if warning is shown */}
-        <main className={demo ? 'pt-16' : showWarning ? "pt-28" : isWorkspace || isMessaging ? "pt-16" : "pt-12"}
-          style={isWorkspace ? { '--workspace-offset': demo ? '7rem' : showWarning ? '7rem' : '4rem' } : undefined}>
+        <main className={demo ? 'pt-16 pb-20' : showWarning ? "pt-28" : isWorkspace || isMessaging ? "pt-16" : "pt-12"}
+          style={isWorkspace ? { '--workspace-offset': demo ? '11rem' : showWarning ? '7rem' : '4rem' } : undefined}>
           {children}
         </main>
       </div>
-      {isLoggedIn && !demo && <AIChatWidget />}
+      {isLoggedIn && <AIChatWidget />}
     </div>
   );
 };

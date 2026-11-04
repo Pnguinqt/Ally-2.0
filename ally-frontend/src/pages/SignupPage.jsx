@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Logo from '../components/Logo';
 import { useSearchParams } from 'react-router-dom';
 import { Handshake, Scale } from 'lucide-react';
@@ -24,30 +24,6 @@ const SignUpPage = () => {
             {/* Logo */}
             <div onClick={() => navigate('/')} className="cursor-pointer">
               <img src="/ally_logo.svg" alt="ALLY" className="w-28 h-10" />
-            </div>
-            
-            {/* Navigation Links */}
-            <div className="flex items-center">
-              <div className="flex items-center gap-8">
-                <Link 
-                  to="#" 
-                  className="text-[#11265A] text-base font-medium hover:text-blue-600 transition-colors"
-                >
-                  About
-                </Link>
-                <Link 
-                  to="#" 
-                  className="text-[#11265A] text-base font-medium hover:text-blue-600 transition-colors"
-                >
-                  Legal Resources
-                </Link>
-                <Link 
-                  to="#" 
-                  className="text-[#11265A] text-base font-medium hover:text-blue-600 transition-colors"
-                >
-                  FAQ
-                </Link>
-              </div>
             </div>
           </div>
         </div>

@@ -13,8 +13,13 @@ export default function AIChatWidget() {
 
   useEffect(() => {
     const openChat = () => { setHasOpened(true); setOpen(true); };
+    const closeChat = () => setOpen(false);
     window.addEventListener('open-ai-chat', openChat);
-    return () => window.removeEventListener('open-ai-chat', openChat);
+    window.addEventListener('close-ai-chat', closeChat);
+    return () => {
+      window.removeEventListener('open-ai-chat', openChat);
+      window.removeEventListener('close-ai-chat', closeChat);
+    };
   }, []);
 
   useEffect(() => {
@@ -25,7 +30,10 @@ export default function AIChatWidget() {
   }, [location.key, location.search]);
 
   useEffect(() => {
-    if (open) panelRef.current?.querySelector('input')?.focus({ preventScroll: true });
+    if (open) {
+      window.dispatchEvent(new Event('ai-chat-opened'));
+      panelRef.current?.querySelector('input')?.focus({ preventScroll: true });
+    }
   }, [open]);
 
   const minimize = () => {
@@ -54,7 +62,7 @@ export default function AIChatWidget() {
         onClick={() => { if (open) minimize(); else { setHasOpened(true); setOpen(true); } }}
         title={open ? 'Minimize AI chat' : 'Ask ALLY'}
         className="fixed flex items-center gap-2 px-4 py-3 text-sm font-semibold text-white bg-blue-600 rounded-full shadow-lg bottom-4 right-4 z-[60] hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
-        <Bot className="w-5 h-5" aria-hidden="true" /><span>Ask ALLY</span>
+        <Bot className="w-5 h-5" aria-hidden="true" /><span className="hidden sm:inline">Ask ALLY</span>
       </button>
     </>
   );

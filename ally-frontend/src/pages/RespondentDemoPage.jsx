@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, ClipboardList, LockKeyhole, RotateCcw, ShieldCheck } from 'lucide-react';
 import PageLayout from '../components/PageLayout';
-import AllyConsultationChat from '../components/AllyConsultationChat';
 import MyCasesPage from './MyCasesPage';
 import LegalWorkspacePage from './LegalWorkspacePage';
 import DocumentsPage from './DocumentsPage';
@@ -17,6 +16,13 @@ import { DEMO_KEY, demoReducer, quests, questUnlocked, readDemoSession } from '.
 import { deleteDemoFile } from '../demo/demoService';
 import QuestHints from '../demo/QuestHints';
 import QuestWindow from '../demo/QuestWindow';
+
+function DemoChatRedirect() {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  params.set('assistant', 'open');
+  return <Navigate to={`/demo/workspace?${params.toString()}`} replace />;
+}
 
 export default function RespondentDemoPage() {
   const [state, setState] = useState(readDemoSession);
@@ -38,6 +44,20 @@ export default function RespondentDemoPage() {
     catch { setError('This browser cannot save demo progress. Keep this tab open during the evaluation.'); }
   }, [state]);
 
+  useEffect(() => {
+    const closeQuestsOnSmallScreen = () => {
+      if (window.matchMedia('(max-width: 1023px)').matches) setShowQuests(false);
+    };
+    window.addEventListener('ai-chat-opened', closeQuestsOnSmallScreen);
+    return () => window.removeEventListener('ai-chat-opened', closeQuestsOnSmallScreen);
+  }, []);
+
+  useEffect(() => {
+    if (showQuests && window.matchMedia('(max-width: 1023px)').matches) {
+      window.dispatchEvent(new Event('close-ai-chat'));
+    }
+  }, [showQuests]);
+
   const goToQuest = quest => navigate(quest.path);
   const reset = async () => {
     if (state.busy) return;
@@ -54,13 +74,12 @@ export default function RespondentDemoPage() {
         <div data-no-translate className="flex h-12 items-center justify-between gap-3 border-b border-blue-100 bg-blue-50 px-4 text-xs text-blue-900 sm:px-6">
           <div className="flex min-w-0 items-center gap-2"><ShieldCheck className="h-4 w-4 shrink-0" /><strong className="whitespace-nowrap font-semibold">Respondent demo</strong>
             <span className="hidden truncate text-blue-700 lg:inline">Practice account · Case and lawyer activity are simulated · AI is live</span></div>
-          <div className="flex shrink-0 items-center gap-3"><button onClick={() => setShowQuests(open => !open)} aria-expanded={showQuests} aria-controls="demo-quest-window" className="inline-flex items-center gap-2 rounded-md border border-blue-200 bg-white px-3 py-1.5 font-semibold hover:bg-blue-100">
-            <ClipboardList className="h-4 w-4" />Quests {state.completed.length}/{quests.length}</button><Link to="/" className="hidden text-blue-700 hover:underline sm:inline">Exit demo</Link></div>
+          <Link to="/" className="shrink-0 text-blue-700 hover:underline">Exit demo</Link>
         </div>
         {error && <p role="alert" className="m-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
         <Routes>
           <Route index element={<Navigate to="chat?mode=normal" replace />} />
-          <Route path="chat" element={<AllyConsultationChat />} />
+          <Route path="chat" element={<DemoChatRedirect />} />
           <Route path="my-cases" element={<MyCasesPage />} />
           <Route path="workspace" element={<LegalWorkspacePage />} />
           <Route path="documents" element={<DocumentsPage />} />
@@ -76,7 +95,7 @@ export default function RespondentDemoPage() {
 
       {!state.started && <SidePanel title="Respondent demo" description="Test ALLY using a ready-to-use practice account." onClose={() => { dispatch({ type: 'start' }); navigate('/demo/chat?mode=normal'); }}>
         <div className="space-y-5 overflow-y-auto p-6 text-sm leading-7 text-gray-600" data-no-translate>
-          <p>You’ll use the same sidebar, chatbot, case form, and workspace as the main app. Open the small <strong>Quests</strong> window on the right for directions while you work. Each quest has a <strong>Hint</strong> button with optional guidance and examples.</p>
+          <p>You’ll use the same sidebar, chatbot, case form, and workspace as the main app. Open <strong>Ask ALLY</strong> at the bottom-right to chat, or the <strong>Quests</strong> bar at the bottom-left for directions. Each quest has a <strong>Hint</strong> button with optional guidance and examples.</p>
           <ol className="list-decimal space-y-3 pl-5">{quests.map(quest => <li key={quest.id}>{quest.title}</li>)}</ol>
           <p className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-blue-900">Use fictional case details. Lawyer acceptance, hearings, appointments, and messages are simulated. AI replies and PDF summaries use the live services.</p>
           <p>Your supplied PDF is available in the actual document upload screen. Progress stays in this tab; use Reset before the next respondent.</p>
@@ -86,8 +105,9 @@ export default function RespondentDemoPage() {
 
       {state.started && <button type="button" onClick={() => setShowQuests(open => !open)}
         aria-label={showQuests ? 'Close quest window' : 'Open quest window'} aria-expanded={showQuests} aria-controls="demo-quest-window"
-        className="fixed bottom-20 right-4 z-[45] inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" data-no-translate>
-        <ClipboardList className="h-4 w-4" aria-hidden="true" />Quests {state.completed.length}/{quests.length}
+        className="fixed bottom-4 left-4 z-[55] inline-flex max-w-[calc(100vw-11rem)] items-center gap-1.5 rounded-xl border border-blue-200 bg-white px-2.5 py-3 text-xs font-semibold text-blue-800 shadow-lg hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 sm:gap-2 sm:px-3 sm:text-sm" data-no-translate>
+        <ClipboardList className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="whitespace-nowrap">Quests {state.completed.length}/{quests.length}</span>
+        <progress value={state.completed.length} max={quests.length} aria-label="Quest completion" className="hidden h-1.5 w-24 accent-blue-600 sm:block" />
         {showQuests ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronUp className="h-4 w-4" aria-hidden="true" />}
       </button>}
 

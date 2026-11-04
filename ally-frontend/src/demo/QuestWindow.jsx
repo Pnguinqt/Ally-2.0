@@ -24,7 +24,7 @@ export default function QuestWindow({ open, onClose, children }) {
     onKeyDown={event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeWindow(); }
     }}
-    className={`fixed bottom-32 right-4 z-[45] w-[360px] max-w-[calc(100vw-2rem)] max-h-[min(34rem,calc(100dvh-10rem))] flex-col overflow-hidden rounded-xl border border-blue-200 bg-white shadow-2xl focus:outline-none ${open ? 'flex' : 'hidden'}`}
+    className={`fixed bottom-20 left-4 z-[55] w-[360px] max-w-[calc(100vw-2rem)] max-h-[min(34rem,calc(100dvh-7rem))] flex-col overflow-hidden rounded-xl border border-blue-200 bg-white shadow-2xl focus:outline-none ${open ? 'flex' : 'hidden'}`}
     data-no-translate>
     <header className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
       <div><h2 id="demo-quest-window-title" className="flex items-center gap-2 text-sm font-semibold text-gray-900"><ClipboardList className="h-4 w-4 text-blue-600" aria-hidden="true" />Demo quests</h2>
