@@ -3,6 +3,8 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import Logo from './Logo';
 import { Shield, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { auth } from '../firebase/config';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -113,6 +115,103 @@ const Login = () => {
     setShowPassword(!showPassword);
   };
 
+  
+const handleGoogleLogin = async () => {
+  if (isLoggingIn) return;
+
+  setIsLoggingIn(true);
+
+  try {
+    // 1. Authenticate with Google through Firebase
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+
+    // 2. Obtain Firebase ID token
+    const idToken = await result.user.getIdToken();
+
+    console.log('Google user:', {
+      uid: result.user.uid,
+      email: result.user.email,
+      displayName: result.user.displayName,
+      photoURL: result.user.photoURL,
+    });
+
+    // 3. Send Firebase ID token to Spring Boot
+    const response = await fetch(
+      `${import.meta.env.VITE_API_BASE_URL}/users/google-login`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ idToken }),
+      }
+    );
+
+    // 4. Handle backend errors
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+
+      throw new Error(
+        errorData.message ||
+        errorData.error ||
+        `Google login failed (${response.status})`
+      );
+    }
+
+    // 5. Receive ALLY JWT
+    const data = await response.json();
+
+    if (!data.token || !data.id || !data.accountType) {
+      throw new Error('Backend returned incomplete login information.');
+    }
+
+    // 6. Store authentication information
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('role', data.accountType);
+    localStorage.setItem('profilePhoto', data.profilePhoto || '');
+    localStorage.setItem('userId', data.id);
+
+    console.log('ALLY Google login successful:', data);
+
+    // 7. Redirect based on account type
+    if (data.accountType === 'ADMIN') {
+      // Preserve existing admin department lookup
+      fetch(`${import.meta.env.VITE_API_BASE_URL}/admins/${data.id}`, {
+        headers: {
+          Authorization: `Bearer ${data.token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+        .then(adminResponse =>
+          adminResponse.ok ? adminResponse.json() : null
+        )
+        .then(adminData => {
+          if (adminData?.department) {
+            localStorage.setItem('department', adminData.department);
+          }
+        })
+        .catch(error =>
+          console.error('Error fetching admin details:', error)
+        );
+
+      navigate('/admin', { replace: true });
+      return;
+    }
+
+    const from = location.state?.from || '/';
+    navigate(from, { replace: true });
+
+  } catch (error) {
+    console.error('Google login failed:', error);
+    toast.error(`Google login failed. ${error.message}`);
+
+  } finally {
+    setIsLoggingIn(false);
+  }
+};
+
+
   return (
     <div className="flex items-center justify-center min-h-screen font-['Poppins'] relative p-4">
       {/* Navigation Bar */}
@@ -220,22 +319,22 @@ const Login = () => {
           <hr className="flex-grow border-t border-gray-300" />
         </div>
 
-        <button 
-          className="flex items-center justify-center gap-3 w-full px-4 py-2 text-sm font-medium text-gray-700 transition bg-white border border-gray-300 rounded-md sm:text-base hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          onClick={() => {
-            window.location.href = `${import.meta.env.VITE_API_BASE_URL}/oauth2/authorization/google`;
-          }}
+      <button
+        type="button"
+        className="flex items-center justify-center gap-3 w-full px-4 py-2 text-sm font-medium text-gray-700 transition bg-white border border-gray-300 rounded-md sm:text-base hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+        onClick={handleGoogleLogin}
+        disabled={isLoggingIn}
         >
-          <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-            <g fill="none" fillRule="evenodd">
-              <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-              <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
-              <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-              <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-            </g>
-          </svg>
-          Continue with Google
-        </button>
+        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+          <g fill="none" fillRule="evenodd">
+            <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+            <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+          </g>
+        </svg>
+        {isLoggingIn ? 'Signing in...' : 'Continue with Google'}
+      </button>
       </div>
     </div>
   );
