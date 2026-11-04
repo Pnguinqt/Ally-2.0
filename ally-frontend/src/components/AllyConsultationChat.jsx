@@ -18,7 +18,7 @@ const readSavedChat = () => {
   catch { return {}; }
 };
 
-const AllyConsultationChat = () => {
+const AllyConsultationChat = ({ embedded = false, visible = true }) => {
   const demo = useDemoRuntime();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -46,6 +46,7 @@ const AllyConsultationChat = () => {
   const activeRequest = useRef(savedChat.pending?.requestId);
   const [historyLoading, setHistoryLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const widgetMessagesRef = useRef(null);
 
   useEffect(() => {
     if (demo) { demo.saveChat({ conversationId, messages, useRAG }); return; }
@@ -89,13 +90,15 @@ const AllyConsultationChat = () => {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [conversationId, pending]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (embedded) {
+      if (visible && widgetMessagesRef.current) {
+        widgetMessagesRef.current.scrollTo({ top: showHistory ? 0 : widgetMessagesRef.current.scrollHeight, behavior: 'smooth' });
+      }
+      return;
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, visible, embedded, showHistory]);
 
   // Recover after a backend restart or temporary search-service outage.
   useEffect(() => {
@@ -280,6 +283,73 @@ const AllyConsultationChat = () => {
       alert('Failed to delete AI chat history. Please try again.');
     }
   };
+
+  if (embedded) return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="flex flex-wrap items-center gap-2 p-3 border-b border-gray-100 shrink-0">
+        <button type="button" onClick={handleNewChat} title="Start a new conversation"
+          className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-gray-600 rounded-lg hover:bg-gray-100">
+          <MessageSquarePlus className="w-4 h-4" />New chat
+        </button>
+        <button type="button" onClick={() => { if (!showHistory) loadHistory(); setShowHistory(value => !value); }} aria-pressed={showHistory}
+          className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-gray-600 rounded-lg hover:bg-gray-100">
+          <History className="w-4 h-4" />{showHistory ? 'Back to chat' : 'History'}
+        </button>
+        <button type="button" onClick={() => setUseRAG(value => !value)} disabled={!ragAvailable} aria-pressed={useRAG}
+          className={`ml-auto rounded-lg px-2 py-1.5 text-xs font-medium disabled:opacity-50 ${useRAG ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+          Case Search: {useRAG ? 'ON' : 'OFF'}
+        </button>
+      </div>
+      <div ref={widgetMessagesRef} className="flex-1 min-h-0 p-3 space-y-4 overflow-y-auto overscroll-contain bg-gray-50">
+        {showHistory ? <>
+          <h3 className="text-sm font-semibold text-gray-800">Saved conversations</h3>
+          {historyLoading && <p role="status" className="text-sm text-gray-500">Loading history…</p>}
+          {!historyLoading && !history.length && <p className="text-sm text-gray-500">No saved conversations yet.</p>}
+          {history.map(item => <div key={item.historyId} className="flex items-center gap-1 p-2 bg-white border border-gray-200 rounded-lg">
+            <button type="button" onClick={() => openHistoryItem(item)} className="flex-1 min-w-0 p-1 text-left">
+              <p className="text-sm font-medium text-gray-800 truncate">{item.userMessage || 'Conversation'}</p>
+              <p className="mt-1 text-xs text-gray-500">{new Date(item.createdAt).toLocaleDateString()}</p>
+            </button>
+            <button type="button" onClick={event => deleteHistoryItem(item, event)} aria-label="Delete saved conversation"
+              className="p-2 text-gray-400 rounded-lg hover:bg-red-50 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+          </div>)}
+        </> : <>
+          {!messages.length && <div className="p-4 bg-white border border-gray-200 rounded-2xl">
+            <p className="text-sm font-semibold text-gray-900">Hi, how can I help?</p>
+            <p className="mt-2 text-sm leading-6 text-gray-600">Ask a Philippine legal question, or turn on Case Search to find relevant decisions.</p>
+          </div>}
+          {messages.map(message => <div key={message.id} className="min-w-0">
+            {message.sender === 'user' ? <div className="flex justify-end">
+              <div className="max-w-[90%] px-4 py-2 text-white bg-blue-600 rounded-2xl rounded-br-md [overflow-wrap:anywhere]">
+                <MarkdownText text={message.text} className="text-sm leading-6" />
+              </div>
+            </div> : <>
+              {!(message.text === RETRIEVAL_NOTICE || (message.ragEnabled && message.text?.trim() === VERIFIED_CASES_INTRO)) && <AIAnswerCard message={message} compact />}
+              {message.ragEnabled && <div className="mt-2"><RetrievedCases message={message} /></div>}
+            </>}
+          </div>)}
+          {(isTyping || pending) && <p role="status" className="px-2 text-sm text-gray-500">ALLY is preparing a response…</p>}
+        </>}
+      </div>
+      <div className="p-3 bg-white border-t border-gray-200 shrink-0">
+        {!ragAvailable && <div className="flex items-center justify-between gap-2 mb-2 text-xs text-gray-500">
+          <span>Case Search is unavailable.</span>
+          <button type="button" onClick={() => setRagHealthVersion(value => value + 1)} disabled={ragChecking} className="font-medium text-blue-600 disabled:opacity-50">
+            {ragChecking ? 'Checking…' : 'Retry'}
+          </button>
+        </div>}
+        <form onSubmit={event => { event.preventDefault(); handleSendMessage(); }} className="flex items-center gap-2 p-2 border border-gray-300 rounded-xl focus-within:border-blue-500">
+          <label htmlFor="widget-ai-message" className="sr-only">Message ALLY</label>
+          <input id="widget-ai-message" type="text" value={inputMessage} onChange={event => setInputMessage(event.target.value)}
+            placeholder="Ask ALLY a question…" disabled={isTyping || Boolean(pending)}
+            className="flex-1 min-w-0 px-1 text-sm bg-transparent outline-none" />
+          <button type="submit" aria-label="Send message to ALLY" disabled={!inputMessage.trim() || isTyping || Boolean(pending)}
+            className="p-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400"><Send className="w-4 h-4" /></button>
+        </form>
+        <p className="mt-2 text-center text-[10px] text-gray-500">Legal information, not legal advice. Verify sources.</p>
+      </div>
+    </div>
+  );
 
   return (
     <>

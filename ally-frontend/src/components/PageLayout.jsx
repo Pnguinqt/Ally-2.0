@@ -7,6 +7,7 @@ import { useSidebar } from '../contexts/SidebarContext';
 import useLawyerStatus from '../hooks/useLawyerStatus.js';
 import LawyerApprovalWarning from './LawyerApprovalWarning.jsx';
 import { useDemoRuntime } from '../demo/DemoContext';
+import AIChatWidget from './AIChatWidget.jsx';
 
 const PageLayout = ({ children }) => {
   const demo = useDemoRuntime();
@@ -64,6 +65,7 @@ const PageLayout = ({ children }) => {
           {children}
         </main>
       </div>
+      {isLoggedIn && !demo && <AIChatWidget />}
     </div>
   );
 };

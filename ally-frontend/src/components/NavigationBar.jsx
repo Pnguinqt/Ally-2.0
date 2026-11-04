@@ -9,6 +9,7 @@ import { useSidebar } from '../contexts/SidebarContext';
 import { fetchActiveConversations, subscribeToConversations } from '../services/chatService';
 import useLawyerStatus from '../hooks/useLawyerStatus.js';
 import { useDemoRuntime } from '../demo/DemoContext';
+import LanguageSwitcher from './LanguageSwitcher.jsx';
 
 const NavigationBar = () => {
   const demo = useDemoRuntime();
@@ -190,6 +191,7 @@ const NavigationBar = () => {
               <>
                 {/* Right Side Icons and Profile */}
                 <div className="flex items-center gap-2 md:gap-4">
+                  <LanguageSwitcher inNavigation />
                   {/* Message and Notification Icons */}
                   <div className="relative" ref={notificationRef}>
                     <button

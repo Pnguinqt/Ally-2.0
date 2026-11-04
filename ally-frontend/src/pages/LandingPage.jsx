@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   Bot,
@@ -17,11 +17,7 @@ import {
   UsersRound,
   X,
 } from 'lucide-react';
-import { isAuthenticated, getAuthData } from '../utils/auth.jsx';
-import NavigationBar from '../components/NavigationBar';
-import ChatSidebar from '../components/ChatSidebar';
-import AllyConsultationChat from '../components/AllyConsultationChat';
-import { useSidebar } from '../contexts/SidebarContext';
+import { isAuthenticated } from '../utils/auth.jsx';
 import './LandingPage.css';
 
 const platformFeatures = [
@@ -72,23 +68,10 @@ const journeySteps = [
 const LandingPage = () => {
   const navigate = useNavigate();
   const isLoggedIn = isAuthenticated();
-  const authData = getAuthData();
-  const userRole = authData?.role || null;
-  const { isExpanded } = useSidebar();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   if (isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <ChatSidebar userRole={userRole} />
-        <div className={`transition-all duration-300 ${isExpanded ? 'ml-[240px]' : 'ml-[60px]'}`}>
-          <NavigationBar />
-          <main className="pt-16 h-[calc(100vh-4rem)]">
-            <AllyConsultationChat />
-          </main>
-        </div>
-      </div>
-    );
+    return <Navigate to="/workspace" replace />;
   }
 
   const goToSignup = () => navigate('/signup');
@@ -244,7 +227,9 @@ const LandingPage = () => {
             </div>
 
             <div className="feature-grid">
-              {platformFeatures.map(({ icon: Icon, eyebrow, title, description, className }) => (
+              {platformFeatures.map(feature => {
+                const { icon: Icon, eyebrow, title, description, className } = feature;
+                return (
                 <article className={`feature-card ${className}`} key={title}>
                   <div className="feature-card__icon"><Icon size={22} /></div>
                   <span className="feature-card__eyebrow">{eyebrow}</span>
@@ -272,7 +257,8 @@ const LandingPage = () => {
                     )}
                   </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>
