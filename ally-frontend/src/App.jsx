@@ -34,6 +34,7 @@ import PageLayout from './components/PageLayout.jsx'
 import { validateAndGetAuthData } from './utils/auth.jsx'
 import NotFound from './pages/NotFound'
 import LanguageSwitcher from './components/LanguageSwitcher'
+import RespondentDemoPage from './pages/RespondentDemoPage'
 
 const LayoutRoutes = () => (
   <PageLayout>
@@ -47,6 +48,11 @@ function AppContent() {
   useEffect(() => {
     const validateAuth = async () => {
       setIsValidating(true);
+      // The respondent space must not validate or alter an existing real login.
+      if (/^\/demo(?:\/|$)/.test(window.location.pathname)) {
+        setIsValidating(false);
+        return;
+      }
       
       // Only validate if there's a token in localStorage
       const token = localStorage.getItem('token');
@@ -78,6 +84,7 @@ function AppContent() {
         <Routes>
           <Route path="/oauth2-redirect" element={<OAuth2RedirectHandler />} />
           <Route path="/" element={<LandingPage />} />
+          <Route path="/demo/*" element={<RespondentDemoPage />} />
           <Route path="/signup" element={<SignUpPage />} />
           <Route path="/signup/client" element={<ClientRegistrationForm />} />
           <Route path="/signup/lawyer" element={<LawyerRegistrationForm />} />        
@@ -89,6 +96,8 @@ function AppContent() {
           <Route element={<LayoutRoutes />}>
             <Route path="/lawyers" element={<ProtectedRoute><LawyerDirectoryPage /></ProtectedRoute>} />
             <Route path="/messages" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
+            <Route path="/messages/:chatroomId" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
+            <Route path="/chat" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
             <Route path="/appointments" element={<ProtectedRoute><AppointmentsPage /></ProtectedRoute>} />
             <Route path="/my-cases" element={<ProtectedRoute><MyCasesPage /></ProtectedRoute>} />
             <Route path="/workspace" element={<ProtectedRoute><LegalWorkspacePage /></ProtectedRoute>} />
@@ -99,9 +108,6 @@ function AppContent() {
             <Route path="/lawyer-settings" element={<ProtectedRoute><Navigate to="/settings" replace /></ProtectedRoute>} />
             <Route path="/consult" element={<ProtectedRoute><AllyConsultationChat /></ProtectedRoute>} />
           </Route>
-          {/* Chat Routes */}
-          <Route path="/chat" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
-          <Route path="/messages/:chatroomId" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
 
 
           {/* Admin Routes */}

@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, History, Loader2, NotebookPen, Search, Send, Trash2, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
-import { caseService } from '../services/caseService.jsx';
-import { deleteConsultationHistory, getConsultationHistory, sendConsultationMessage } from '../services/allyConsultationService.js';
-import { documentService } from '../services/documentService.js';
+import { caseService as productionCaseService } from '../services/caseService.jsx';
+import * as productionChatService from '../services/allyConsultationService.js';
+import { documentService as productionDocumentService } from '../services/documentService.js';
+import { useDemoRuntime } from '../demo/DemoContext';
+import { useSearchParams } from 'react-router-dom';
 import { getAuthData } from '../utils/auth.jsx';
 import CaseDocumentManager from '../components/CaseDocumentManager.jsx';
 import CaseHearingCalendar from '../components/CaseHearingCalendar.jsx';
@@ -11,6 +13,11 @@ import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import MarkdownText from '../components/shared/MarkdownText.jsx';
 
 const LegalWorkspacePage = () => {
+  const demo = useDemoRuntime();
+  const caseService = demo?.caseService || productionCaseService;
+  const documentService = demo?.documentService || productionDocumentService;
+  const { deleteConsultationHistory, getConsultationHistory, sendConsultationMessage } = demo?.chatService || productionChatService;
+  const [searchParams] = useSearchParams();
   const [authData, setAuthData] = useState(null);
   const [cases, setCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
@@ -29,7 +36,16 @@ const LegalWorkspacePage = () => {
   const aiRequestId = useRef(0);
 
   useEffect(() => {
-    const auth = getAuthData();
+    const tab = searchParams.get('tab');
+    if (demo && ['overview', 'hearings', 'documents', 'notes', 'ai'].includes(tab)) setActiveTab(tab);
+  }, [demo, searchParams]);
+
+  useEffect(() => {
+    if (demo && selectedCaseId) demo.visit(activeTab);
+  }, [demo, selectedCaseId, activeTab]);
+
+  useEffect(() => {
+    const auth = demo?.auth || getAuthData();
     if (!auth) {
       toast.error('Please log in to open your legal workspace');
       setLoading(false);
@@ -79,7 +95,7 @@ const LegalWorkspacePage = () => {
       return;
     }
 
-    setNotes(localStorage.getItem(getNotesKey(selectedCaseId, authData.userId)) || '');
+    setNotes(demo ? demo.getNotes() : localStorage.getItem(getNotesKey(selectedCaseId, authData.userId)) || '');
   }, [selectedCaseId, authData]);
 
   useEffect(() => {
@@ -143,7 +159,8 @@ const LegalWorkspacePage = () => {
   const saveNotes = (value) => {
     setNotes(value);
     if (!authData || !selectedCaseId) return;
-    localStorage.setItem(getNotesKey(selectedCaseId, authData.userId), value);
+    if (demo) demo.saveNotes(value);
+    else localStorage.setItem(getNotesKey(selectedCaseId, authData.userId), value);
   };
 
   const askWorkspaceAi = async (event) => {

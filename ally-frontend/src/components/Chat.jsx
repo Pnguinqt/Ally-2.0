@@ -1,24 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import {
-    sendMessage,
-    subscribeToMessages,
-    editMessage,
-    deleteMessage,
-    markChatAsRead
-} from '../services/chatService';
-import { fetchUserDetails } from '../utils/auth';
+import { toast } from 'sonner';
+import * as productionMessaging from '../services/chatService';
+import { useDemoRuntime } from '../demo/DemoContext';
 import MarkdownText from './shared/MarkdownText';
+import useMessageReadReceipt from '../hooks/useMessageReadReceipt';
 
-const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, receiverName, compact = false }) => {
+const Chat = ({ currentUserId, receiverId, currentUserRole, receiverName, compact = false }) => {
+    const demo = useDemoRuntime();
+    const { sendMessage, subscribeToMessages, editMessage, deleteMessage, markChatAsRead } = demo?.messaging || productionMessaging;
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [editingMessage, setEditingMessage] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [chatroomId, setChatroomId] = useState(null);
-    const [receiver, setReceiver] = useState(null);
-    const [isTyping, setIsTyping] = useState(false);
     const messagesEndRef = useRef(null);
     const navigate = useNavigate();
 
@@ -29,7 +24,7 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
 
     // Scroll to bottom on new messages
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: 'nearest' });
     };
 
     useEffect(() => {
@@ -39,40 +34,15 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
             setMessages(messages || []);
             setChatroomId(chatroomId);
             scrollToBottom();
-        });
+        }, error => toast.error(error.message || 'Unable to receive messages.'));
 
         return () => {
             unsubscribe(); 
         };
-    }, [currentUserId, receiverId]);
+    }, [currentUserId, receiverId, subscribeToMessages]);
 
-    // Mark chat as read when opened
-    useEffect(() => {
-        if (chatroomId && currentUserId) {
-            markChatAsRead(chatroomId, currentUserId).catch(console.error);
-        }
-    }, [chatroomId, currentUserId]);
+    useMessageReadReceipt(chatroomId, currentUserId, messages, markChatAsRead);
 
-    // Load receiver details
-    useEffect(() => {
-        const loadReceiver = async () => {
-            try {
-                // Skip if receiverId is invalid
-                if (!receiverId || receiverId === 'undefined') {
-                    console.warn('Skipping receiver load: invalid receiverId', receiverId);
-                    return;
-                }
-                
-                const receiverData = await fetchUserDetails(receiverId);
-                setReceiver(receiverData);
-            } catch (error) {
-                console.error('Failed to load receiver:', error);
-                toast.warn('Could not load contact details');
-            }
-        };
-
-        loadReceiver();
-    }, [receiverId]);
 
 
     const handleSend = async (e) => {
@@ -102,7 +72,7 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
             // Only redirect if not in compact mode (inline chat/modal)
             // When compact=true, we're in a modal and should stay there
             if (!compact) {
-                navigate(`/messages/${chatroomId}`, { replace: true });
+                navigate(demo ? demo.path(`/messages/${chatroomId}`) : `/messages/${chatroomId}`, { replace: true });
             }
 
         } catch (error) {
@@ -118,7 +88,7 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
     // Handle message edit
     const handleEdit = async (messageId, content) => {
         if (!chatroomId) {
-            toast.warn('No active chatroom found.');
+            toast.warning('No active chatroom found.');
             return;
         }
 
@@ -135,7 +105,7 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
     // Handle message delete
     const handleDelete = async (messageId) => {
         if (!chatroomId) {
-            toast.warn('No active chatroom found.');
+            toast.warning('No active chatroom found.');
             return;
         }
 
@@ -158,6 +128,7 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
 
     return (
         <div className="flex flex-col h-full overflow-hidden bg-white">
+            {demo && <p className="border-b border-blue-100 bg-blue-50 px-4 py-2 text-xs leading-5 text-blue-800">Practice messages stay in this demo. No lawyer is contacted.</p>}
             {/* Chat Header - Hide in compact mode */}
             {!compact && (
                 <div className="flex items-center flex-shrink-0 p-4 bg-white border-b shadow-sm">
@@ -267,8 +238,6 @@ const Chat = ({ currentUserId, receiverId, currentUserRole, currentUserName, rec
                         placeholder="Type a message..."
                         className="flex-1 p-2 text-sm border rounded-full focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                         disabled={isLoading}
-                        onFocus={() => setIsTyping(true)}
-                        onBlur={() => setIsTyping(false)}
                     />
                     <button
                         type="submit"

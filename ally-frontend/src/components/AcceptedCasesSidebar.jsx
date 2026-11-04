@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, FileText, Loader2, AlertCircle } from 'lucide-react';
-import { caseService } from '../services/caseService.jsx';
+import { caseService as productionCaseService } from '../services/caseService.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
 import { getAuthData } from '../utils/auth.jsx';
 
 export const AcceptedCasesSidebar = ({ onBookCase, refreshTrigger = 0 }) => {
+  const demo = useDemoRuntime();
+  const caseService = demo?.caseService || productionCaseService;
   const [acceptedCases, setAcceptedCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -17,7 +20,7 @@ export const AcceptedCasesSidebar = ({ onBookCase, refreshTrigger = 0 }) => {
       setLoading(true);
       setError(null);
       
-      const authData = getAuthData();
+      const authData = demo?.auth || getAuthData();
       if (!authData || !authData.userId) {
         setError('Authentication required');
         return;

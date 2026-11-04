@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { MessageSquarePlus, Folder, Calendar, UserSearch, MessageCircle, Settings, ChevronLeft, ChevronRight, X, Menu, BriefcaseBusiness, LayoutDashboard } from 'lucide-react';
+import { MessageSquarePlus, Folder, Calendar, UserSearch, Settings, ChevronLeft, ChevronRight, X, Menu, BriefcaseBusiness, LayoutDashboard } from 'lucide-react';
 import { useSidebar } from '../contexts/SidebarContext';
 import { getAuthData } from '../utils/auth.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const ChatSidebar = () => {
+  const demo = useDemoRuntime();
   const navigate = useNavigate();
   const location = useLocation();
   const { isExpanded, toggleSidebar } = useSidebar();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const authData = getAuthData();
+  const authData = demo?.auth || getAuthData();
   const isAdmin = authData?.accountType === 'ADMIN';
   
-  const isOnSettingsPage = location.pathname.startsWith('/settings');
+  const isOnSettingsPage = location.pathname.startsWith(demo ? '/demo/settings' : '/settings');
 
   // Close mobile sidebar when navigating
   useEffect(() => {
@@ -21,7 +23,6 @@ const ChatSidebar = () => {
 
   const navigationItems = [
     { name: 'New Chat', path: '/', icon: MessageSquarePlus, action: 'newChat' },
-    { name: 'Messages', path: '/messages', icon: MessageCircle },
     { name: 'Case Workspace', path: '/workspace', icon: BriefcaseBusiness },
     { name: 'My Cases', path: '/my-cases', icon: Folder },
     { name: 'Appointment', path: '/appointments', icon: Calendar },
@@ -29,19 +30,20 @@ const ChatSidebar = () => {
   ];
 
   const handleNewChat = () => {
-    navigate('/');
+    navigate(demo ? demo.path('/') : '/');
     window.dispatchEvent(new Event('reset-chat'));
   };
 
   const isActive = (path) => {
-    return location.pathname === path;
+    const destination = demo ? demo.path(path) : path;
+    return location.pathname === destination || (path !== '/' && location.pathname.startsWith(`${destination}/`));
   };
 
   const handleNavigation = (item) => {
     if (item.action === 'newChat') {
       handleNewChat();
     } else {
-      navigate(item.path);
+      navigate(demo ? demo.path(item.path) : item.path);
     }
   };
 
@@ -107,8 +109,6 @@ const ChatSidebar = () => {
       <nav className="flex-1 px-3 py-6 space-y-2 overflow-y-auto">
         {navigationItems
           .filter(item => {
-            // Hide Messages from navigation
-            if (item.path === '/messages') return false;
             // Hide Find Lawyer for lawyers
             const isLawyer = authData?.accountType === 'LAWYER';
             if (item.path === '/lawyers' && isLawyer) return false;
@@ -137,7 +137,7 @@ const ChatSidebar = () => {
           })}
 
         <button
-          onClick={() => navigate(isAdmin ? '/admin' : '/settings')}
+          onClick={() => navigate(demo ? demo.path('/settings') : isAdmin ? '/admin' : '/settings')}
           className={`w-full flex items-center gap-3 px-3 py-3.5 rounded-[8px] text-base font-medium transition-all duration-200 ${
             !isAdmin && isOnSettingsPage
               ? 'bg-[#1A6EFF] text-white'

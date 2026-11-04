@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Search, Loader2, ArrowLeft, Files } from 'lucide-react';
 import { toast } from 'sonner';
-import { documentService } from '../services/documentService.js';
-import { caseService } from '../services/caseService.jsx';
+import { documentService as productionDocumentService } from '../services/documentService.js';
+import { caseService as productionCaseService } from '../services/caseService.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
 import { getAuthData } from '../utils/auth.jsx';
 import CaseDocumentManager from '../components/CaseDocumentManager.jsx';
 
 const DocumentsPage = () => {
+  const demo = useDemoRuntime();
+  const documentService = demo?.documentService || productionDocumentService;
+  const caseService = demo?.caseService || productionCaseService;
   const { caseId } = useParams();
   const navigate = useNavigate();
   const [cases, setCases] = useState([]);
@@ -21,7 +25,7 @@ const DocumentsPage = () => {
 
   // Get auth data on component mount
   useEffect(() => {
-    const auth = getAuthData();
+    const auth = demo?.auth || getAuthData();
     
     if (!auth) {
       toast.error('Please log in to access documents');
@@ -114,14 +118,14 @@ const DocumentsPage = () => {
       
       if (!currentCase) {
         toast.error(`Case #${caseId} not found or access denied`);
-        navigate('/documents');
+        navigate(demo ? demo.path('/documents') : '/documents');
         return;
       }
       
       // Additional validation for case access
       if (currentCase.status !== 'ACCEPTED') {
         toast.error('Document access is only available for accepted cases');
-        navigate('/documents');
+        navigate(demo ? demo.path('/documents') : '/documents');
         return;
       }
       
@@ -130,7 +134,7 @@ const DocumentsPage = () => {
     } catch (error) {
       console.error('Error loading case info:', error);
       toast.error(`Failed to load case information: ${error.message}`);
-      navigate('/documents');
+      navigate(demo ? demo.path('/documents') : '/documents');
     } finally {
       setLoading(false);
     }
@@ -138,7 +142,7 @@ const DocumentsPage = () => {
 
   // Navigate to case documents
   const handleViewCaseDocuments = (caseId) => {
-    navigate(`/documents/${caseId}`);
+    navigate(demo ? demo.path(`/documents/${caseId}`) : `/documents/${caseId}`);
   };
 
   // Filter cases based on search term
@@ -315,7 +319,7 @@ const DocumentsPage = () => {
                 )}
                 <div className="space-y-2">
                   <button
-                    onClick={() => navigate('/documents')}
+                    onClick={() => navigate(demo ? demo.path('/documents') : '/documents')}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     Back to Documents
@@ -341,7 +345,7 @@ const DocumentsPage = () => {
         {/* Header */}
         <div className="mb-6">
           <button
-            onClick={() => navigate('/documents')}
+            onClick={() => navigate(demo ? demo.path('/documents') : '/documents')}
             className="flex items-center gap-2 text-blue-600 hover:text-blue-700 mb-4"
           >
             <ArrowLeft className="w-4 h-4" />

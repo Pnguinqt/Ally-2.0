@@ -11,6 +11,7 @@ import {
 import { SearchPanel } from "../components/SearchPanel";
 import { LawyerProfile } from "../components/LawyerProfile";
 import { adminService } from "../services/adminService";
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const lawyerIsVerified = (lawyer) =>
   Boolean(
@@ -26,6 +27,7 @@ const numericExperience = (value) =>
   Number(typeof value === "string" ? value.replace(/\D/g, "") : value) || 0;
 
 export const LawyerDirectoryPage = () => {
+  const demo = useDemoRuntime();
   const [selectedLawyer, setSelectedLawyer] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState({
@@ -50,7 +52,7 @@ export const LawyerDirectoryPage = () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await adminService.getAllLawyers();
+        const data = demo ? await demo.loadLawyers() : await adminService.getAllLawyers();
         if (!active) return;
 
         setFetchedLawyers(

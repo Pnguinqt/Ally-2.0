@@ -299,6 +299,7 @@ const handleGoogleLogin = async () => {
         </form>
 
         <div className="mt-6 text-center">
+          <Link to="/demo" className="block mb-4 text-sm font-medium text-blue-600 hover:underline">Here for the survey? Try the respondent demo</Link>
           <div className="flex items-center justify-center gap-2">
             <p className="text-sm text-gray-600">
               Don't have an account?

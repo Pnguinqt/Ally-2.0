@@ -3,12 +3,15 @@ import { CalendarDays, Clock3, Loader2, MapPin, Plus, RefreshCw } from 'lucide-r
 import { toast } from 'sonner';
 import { Calendar } from './ui/calendar.jsx';
 import SidePanel from './shared/SidePanel.jsx';
-import { hearingService } from '../services/hearingService.js';
+import { hearingService as productionHearingService } from '../services/hearingService.js';
+import { useDemoRuntime } from '../demo/DemoContext';
 import { calendarDate, calendarDateKey, formatHearingDate, formatHearingTime, hearingDateKey, hearingInstant } from '../utils/hearingDates.js';
 
 const inputClass = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 
 export default function CaseHearingCalendar({ caseInfo, authData }) {
+  const demo = useDemoRuntime();
+  const hearingService = demo?.hearingService || productionHearingService;
   const [hearings, setHearings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

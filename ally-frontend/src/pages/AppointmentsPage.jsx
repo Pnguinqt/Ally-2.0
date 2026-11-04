@@ -3,9 +3,11 @@ import { AppointmentsList } from '../components/AppointmentsList';
 import { AcceptedCasesSidebar } from '../components/AcceptedCasesSidebar';
 import { getAuthData } from '../utils/auth.jsx';
 import { BookingModal } from '../components/BookingModal';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 export const AppointmentsPage = () => {
-  const authData = getAuthData();
+  const demo = useDemoRuntime();
+  const authData = demo?.auth || getAuthData();
   const isLawyer = authData?.accountType === 'LAWYER';
   
   // State for booking modal and case selection

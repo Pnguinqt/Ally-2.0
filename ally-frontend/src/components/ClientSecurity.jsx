@@ -3,9 +3,11 @@ import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import Section from './shared/Section';
 import InputField from './shared/InputField';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 const ClientSecurity = ({ embedded = false }) => {
-  const token = localStorage.getItem('token');
+  const demo = useDemoRuntime();
+  const token = demo ? null : localStorage.getItem('token');
 
   // Password change states
   const [passwordChange, setPasswordChange] = useState({
@@ -39,6 +41,11 @@ const ClientSecurity = ({ embedded = false }) => {
       return;
     }
 
+    if (demo) {
+      setPasswordChange(prev => ({ ...prev, currentPassword: '', newPassword: '', confirmPassword: '' }));
+      toast.success('Password change simulated. No account password was changed.');
+      return;
+    }
     setPasswordChange(prev => ({ ...prev, isLoading: true }));
 
     try {

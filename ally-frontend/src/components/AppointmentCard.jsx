@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { User, Trash2, Check, X } from 'lucide-react';
 import { getAuthData } from '../utils/auth.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 export const AppointmentCard = ({ appointment, onCancel, onAccept, onDecline, onCardClick }) => {
+  const demo = useDemoRuntime();
   const [isAccepting, setIsAccepting] = useState(false);
   const [isDeclining, setIsDeclining] = useState(false);
   const [showDeclineModal, setShowDeclineModal] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
   
-  const authData = getAuthData();
+  const authData = demo?.auth || getAuthData();
   const isLawyer = authData?.accountType === 'LAWYER';
 
   // Get status color based on appointment status

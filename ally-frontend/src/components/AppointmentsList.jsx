@@ -5,9 +5,12 @@ import { BookingModal } from './BookingModal';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getAuthData } from '../utils/auth.jsx';
-import { scheduleService } from '../services/scheduleService.jsx';
+import { scheduleService as productionScheduleService } from '../services/scheduleService.jsx';
+import { useDemoRuntime } from '../demo/DemoContext';
 
 export const AppointmentsList = ({ refreshTrigger = 0 }) => {
+  const demo = useDemoRuntime();
+  const scheduleService = demo?.scheduleService || productionScheduleService;
   const [appointments, setAppointments] = useState([]);
   const [pastAppointments, setPastAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +25,14 @@ export const AppointmentsList = ({ refreshTrigger = 0 }) => {
   }, [refreshTrigger]);  const fetchUserAppointments = async () => {
     try {
       setLoading(true);
-      const authData = getAuthData();
+      const authData = demo?.auth || getAuthData();
+      if (demo) {
+        const items = demo.getAppointments();
+        setAppointments(items.filter(item => new Date(item.bookingEndTime).getTime() >= Date.now()));
+        setPastAppointments(items.filter(item => new Date(item.bookingEndTime).getTime() < Date.now()));
+        setError(null);
+        return;
+      }
       
       
       if (!authData || !authData.userId) {
@@ -133,7 +143,7 @@ export const AppointmentsList = ({ refreshTrigger = 0 }) => {
   };
 
   const handleAccept = async (appointment) => {
-    const authData = getAuthData();
+    const authData = demo?.auth || getAuthData();
     if (!authData || authData.accountType !== 'LAWYER') {
       toast.error('Only lawyers can accept appointments');
       return;
@@ -157,7 +167,7 @@ export const AppointmentsList = ({ refreshTrigger = 0 }) => {
   };
 
   const handleDecline = async (appointment, reason) => {
-    const authData = getAuthData();
+    const authData = demo?.auth || getAuthData();
     if (!authData || authData.accountType !== 'LAWYER') {
       toast.error('Only lawyers can decline appointments');
       return;
@@ -239,7 +249,7 @@ export const AppointmentsList = ({ refreshTrigger = 0 }) => {
   const hasAnyAppointments = appointments.length > 0 || pastAppointments.length > 0;
 
   if (!hasAnyAppointments) {
-    const authData = getAuthData();
+    const authData = demo?.auth || getAuthData();
     const isLawyer = authData?.accountType === 'LAWYER';
 
     return (
