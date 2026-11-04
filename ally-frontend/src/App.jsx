@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Outlet, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { Toaster } from 'sonner'
 import './App.css'
@@ -28,7 +28,6 @@ import AccountSettings from './components/AccountSettings'
 import ChatContainer from './components/ChatContainer'
 import MyCasesPage from './pages/MyCasesPage'
 import OAuth2RedirectHandler from './pages/OAuth2RedirectHandler'
-import AllyConsultationChat from './components/AllyConsultationChat'
 import { SidebarProvider } from './contexts/SidebarContext'
 import PageLayout from './components/PageLayout.jsx'
 import { validateAndGetAuthData } from './utils/auth.jsx'
@@ -41,6 +40,13 @@ const LayoutRoutes = () => (
     <Outlet />
   </PageLayout>
 )
+
+// Pages with the shared navigation bar provide their language control there.
+const FallbackLanguageSwitcher = () => {
+  const { pathname } = useLocation();
+  const hasNavigationBar = /^\/(?:demo|lawyers|messages|chat|appointments|my-cases|workspace|documents|settings|lawyer-settings|consult)(?:\/|$)/.test(pathname);
+  return hasNavigationBar ? null : <LanguageSwitcher />;
+};
 
 function AppContent() {
   const [isValidating, setIsValidating] = useState(true);
@@ -106,7 +112,7 @@ function AppContent() {
             <Route path="/settings" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
             <Route path="/settings/security" element={<ProtectedRoute><AccountSettings /></ProtectedRoute>} />
             <Route path="/lawyer-settings" element={<ProtectedRoute><Navigate to="/settings" replace /></ProtectedRoute>} />
-            <Route path="/consult" element={<ProtectedRoute><AllyConsultationChat /></ProtectedRoute>} />
+            <Route path="/consult" element={<ProtectedRoute><Navigate to="/workspace?assistant=open" replace /></ProtectedRoute>} />
           </Route>
 
 
@@ -142,7 +148,7 @@ function App() {
       <SidebarProvider>
         <Toaster position="top-center" richColors />
         <AppContent />
-        <LanguageSwitcher />
+        <FallbackLanguageSwitcher />
       </SidebarProvider>
     </Router>
   );

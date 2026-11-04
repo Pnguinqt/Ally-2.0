@@ -22,7 +22,7 @@ const ChatSidebar = () => {
   }, [location.pathname]);
 
   const navigationItems = [
-    { name: 'New Chat', path: '/', icon: MessageSquarePlus, action: 'newChat' },
+    { name: demo ? 'New Chat' : 'AI Assistant', path: '/', icon: MessageSquarePlus, action: 'newChat' },
     { name: 'Case Workspace', path: '/workspace', icon: BriefcaseBusiness },
     { name: 'My Cases', path: '/my-cases', icon: Folder },
     { name: 'Appointment', path: '/appointments', icon: Calendar },
@@ -30,6 +30,11 @@ const ChatSidebar = () => {
   ];
 
   const handleNewChat = () => {
+    if (!demo) {
+      window.dispatchEvent(new Event('open-ai-chat'));
+      setIsMobileOpen(false);
+      return;
+    }
     navigate(demo ? demo.path('/') : '/');
     window.dispatchEvent(new Event('reset-chat'));
   };

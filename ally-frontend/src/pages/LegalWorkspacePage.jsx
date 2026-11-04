@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, History, Loader2, NotebookPen, Search, Send, Trash2, UserRound } from 'lucide-react';
+import { Bot, BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, History, Loader2, NotebookPen, Send, Trash2, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { caseService as productionCaseService } from '../services/caseService.jsx';
 import * as productionChatService from '../services/allyConsultationService.js';
@@ -10,6 +10,7 @@ import { getAuthData } from '../utils/auth.jsx';
 import CaseDocumentManager from '../components/CaseDocumentManager.jsx';
 import CaseHearingCalendar from '../components/CaseHearingCalendar.jsx';
 import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
+import WorkspaceCaseSidebar from '../components/WorkspaceCaseSidebar.jsx';
 import MarkdownText from '../components/shared/MarkdownText.jsx';
 
 const LegalWorkspacePage = () => {
@@ -24,8 +25,8 @@ const LegalWorkspacePage = () => {
   const [documentCounts, setDocumentCounts] = useState({});
   const [aiHistory, setAiHistory] = useState([]);
   const [notes, setNotes] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
   const [caseListTab, setCaseListTab] = useState('recent');
+  const [caseSidebarCollapsed, setCaseSidebarCollapsed] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiReply, setAiReply] = useState(null);
   const [selectedHistoryId, setSelectedHistoryId] = useState(null);
@@ -134,23 +135,10 @@ const LegalWorkspacePage = () => {
 
   const recentCases = useMemo(() => cases.filter(caseItem => !isCompletedCase(caseItem)), [cases]);
   const completedCases = useMemo(() => cases.filter(isCompletedCase), [cases]);
-  const casesForActiveList = caseListTab === 'completed' ? completedCases : recentCases;
-
-  const filteredCases = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return casesForActiveList;
-
-    return casesForActiveList.filter(caseItem =>
-      [caseItem.title, caseItem.caseType, caseItem.description, caseItem.status]
-        .filter(Boolean)
-        .some(value => String(value).toLowerCase().includes(term))
-    );
-  }, [casesForActiveList, searchTerm]);
-
-  const changeCaseListTab = (nextTab) => {
-    const nextCases = nextTab === 'completed' ? completedCases : recentCases;
+  const changeCaseListTab = (nextTab, scopedCases = cases) => {
+    const nextCases = (nextTab === 'completed' ? completedCases : recentCases)
+      .filter(item => scopedCases.some(candidate => candidate.caseId === item.caseId));
     setCaseListTab(nextTab);
-    setSearchTerm('');
     setSelectedCaseId(current => nextCases.some(item => item.caseId === Number(current))
       ? current
       : nextCases[0]?.caseId || null);
@@ -244,80 +232,17 @@ const LegalWorkspacePage = () => {
         <p className="mt-1 text-sm text-gray-500">Choose a case, then open the tool you need.</p>
       </div>
 
-      <div className="mb-4 lg:hidden">
-        <CaseListTabs
+      <div className={`grid flex-1 min-h-0 gap-4 ${caseSidebarCollapsed ? 'lg:grid-cols-[64px_minmax(0,1fr)]' : 'lg:grid-cols-[280px_minmax(0,1fr)]'}`}>
+        <WorkspaceCaseSidebar
+          cases={cases}
+          isLawyer={authData?.accountType === 'LAWYER'}
           activeTab={caseListTab}
-          onChange={changeCaseListTab}
-          recentCount={recentCases.length}
-          completedCount={completedCases.length}
+          onTabChange={changeCaseListTab}
+          selectedCaseId={selectedCaseId}
+          onSelect={setSelectedCaseId}
+          collapsed={caseSidebarCollapsed}
+          onToggleCollapsed={() => setCaseSidebarCollapsed(value => !value)}
         />
-        <label htmlFor="workspace-case-select" className="block mb-1 text-sm font-medium text-gray-700">Current case</label>
-        <select id="workspace-case-select" value={selectedCaseId || ''} onChange={event => setSelectedCaseId(Number(event.target.value))}
-          disabled={casesForActiveList.length === 0} className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-md">
-          {casesForActiveList.length === 0 && <option value="">No {caseListTab} cases</option>}
-          {casesForActiveList.map(caseItem => <option key={caseItem.caseId} value={caseItem.caseId}>
-            #{caseItem.caseId} · {caseItem.title || 'Untitled case'} · {caseItem.status}
-          </option>)}
-        </select>
-      </div>
-
-      <div className="grid flex-1 min-h-0 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <aside aria-label="Cases" className="hidden min-h-0 flex-col overflow-hidden bg-white border border-gray-200 rounded-lg lg:flex">
-          <div className="p-4 border-b border-gray-200">
-            <CaseListTabs
-              activeTab={caseListTab}
-              onChange={changeCaseListTab}
-              recentCount={recentCases.length}
-              completedCount={completedCases.length}
-            />
-            <div className="relative">
-              <Search className="absolute w-4 h-4 text-gray-400 -translate-y-1/2 left-3 top-1/2" />
-              <input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search cases"
-                className="w-full py-2 pl-10 pr-3 text-sm border border-gray-300 rounded-md focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-          </div>
-
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2">
-            {filteredCases.length === 0 ? (
-              <div className="px-3 py-10 text-sm text-center text-gray-500">
-                {searchTerm.trim()
-                  ? `No matching ${caseListTab} cases.`
-                  : caseListTab === 'completed' ? 'No completed cases yet.' : 'No recent cases available.'}
-              </div>
-            ) : (
-              filteredCases.map(caseItem => (
-                <button
-                  key={caseItem.caseId}
-                  aria-pressed={selectedCaseId === caseItem.caseId}
-                  onClick={() => setSelectedCaseId(caseItem.caseId)}
-                  className={`w-full p-3 text-left rounded-md border mb-2 transition-colors ${
-                    selectedCaseId === caseItem.caseId
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-transparent hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{caseItem.title || `Case #${caseItem.caseId}`}</p>
-                      <p className="mt-1 text-xs text-gray-500">#{caseItem.caseId} · {caseItem.caseType || 'General'}</p>
-                    </div>
-                    <span className={`px-2 py-1 text-[11px] font-medium rounded-full ${statusClass(caseItem.status)}`}>
-                      {caseItem.status}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-3 text-xs text-gray-500">
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>{documentCounts[caseItem.caseId] || 0} document{documentCounts[caseItem.caseId] === 1 ? '' : 's'}</span>
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </aside>
         <section aria-label="Selected case workspace" className="flex flex-col min-w-0 min-h-0">
           {!selectedCase ? (
             <div className="p-10 text-center bg-white border border-gray-200 rounded-lg">
@@ -557,39 +482,6 @@ const TimelineStep = ({ item, isLast }) => {
           {item.date && <p className="mt-2 text-xs font-medium text-gray-600">{item.date}</p>}
         </div>
       </div>
-    </div>
-  );
-};
-
-const CaseListTabs = ({ activeTab, onChange, recentCount, completedCount }) => {
-  const tabs = [
-    { id: 'recent', label: 'Recent', count: recentCount },
-    { id: 'completed', label: 'Completed', count: completedCount }
-  ];
-
-  return (
-    <div role="tablist" aria-label="Filter cases" className="grid grid-cols-2 gap-1 p-1 mb-3 bg-gray-100 rounded-lg">
-      {tabs.map(tab => (
-        <button
-          key={tab.id}
-          type="button"
-          role="tab"
-          aria-selected={activeTab === tab.id}
-          onClick={() => onChange(tab.id)}
-          className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium transition-colors ${
-            activeTab === tab.id
-              ? 'bg-white text-blue-700 shadow-sm'
-              : 'text-gray-600 hover:bg-white/70 hover:text-gray-900'
-          }`}
-        >
-          <span>{tab.label}</span>
-          <span className={`min-w-5 rounded-full px-1.5 py-0.5 text-[11px] leading-4 ${
-            activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
-          }`}>
-            {tab.count}
-          </span>
-        </button>
-      ))}
     </div>
   );
 };
