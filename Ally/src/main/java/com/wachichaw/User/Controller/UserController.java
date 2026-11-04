@@ -313,18 +313,24 @@ public class UserController {
             return ResponseEntity.ok(Map.of("email", client.getEmail(), "verified", client.isVerified()));
         } catch (com.wachichaw.EmailConfig.Service.EmailDeliveryException exception) {
             return ResponseEntity.status(503).body(Map.of("message",
-                "We couldn't send your verification email. Please try registering again shortly."));
+                    "We couldn't send your verification email. Please try registering again shortly."));
         } catch (ResponseStatusException exception) {
             return ResponseEntity.status(exception.getStatusCode()).body(Map.of("message",
-                exception.getStatusCode().value() == 409 ? "Email already exists." : "Registration could not be completed."));
+                    exception.getStatusCode().value() == 409 ? "Email already exists."
+                            : "Registration could not be completed."));
         } catch (org.springframework.dao.DataIntegrityViolationException exception) {
-            return ResponseEntity.status(409).body(Map.of("message", "Registration conflicts with an existing account or invalid account details."));
+            return ResponseEntity.status(409).body(
+                    Map.of("message", "Registration conflicts with an existing account or invalid account details."));
         } catch (org.springframework.dao.DataAccessException exception) {
-            org.slf4j.LoggerFactory.getLogger(UserController.class).error("Registration database operation failed ({})", exception.getClass().getSimpleName());
-            return ResponseEntity.status(503).body(Map.of("message", "Registration is temporarily unavailable. Please try again shortly."));
+            org.slf4j.LoggerFactory.getLogger(UserController.class).error("Registration database operation failed ({})",
+                    exception.getClass().getSimpleName());
+            return ResponseEntity.status(503)
+                    .body(Map.of("message", "Registration is temporarily unavailable. Please try again shortly."));
         } catch (Exception exception) {
-            org.slf4j.LoggerFactory.getLogger(UserController.class).error("Registration failed ({})", exception.getClass().getSimpleName());
-            return ResponseEntity.status(500).body(Map.of("message", "Registration could not be completed. Please try again."));
+            org.slf4j.LoggerFactory.getLogger(UserController.class).error("Registration failed ({})",
+                    exception.getClass().getSimpleName());
+            return ResponseEntity.status(500)
+                    .body(Map.of("message", "Registration could not be completed. Please try again."));
         }
     }
 
@@ -707,7 +713,8 @@ public class UserController {
         try {
             userService.requestPasswordReset(request.get("email"));
         } catch (Exception exception) {
-            // Do not reveal whether an address is registered or whether mail delivery failed.
+            // Do not reveal whether an address is registered or whether mail delivery
+            // failed.
             System.err.println("Password reset email could not be sent: " + exception.getMessage());
         }
         response.put("success", true);
@@ -729,6 +736,44 @@ public class UserController {
             response.put("message", exception.getMessage());
             return ResponseEntity.badRequest().body(response);
         }
+    }
+
+    @PostMapping("/google-login")
+    public ResponseEntity<?> googleLogin(
+            @RequestBody Map<String, String> request) {
+
+        String idToken = request.get("idToken");
+
+        if (idToken == null || idToken.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body("Firebase ID token is required.");
+        }
+
+        String token = userService.authenticateWithGoogle(idToken);
+
+        int id = Integer.parseInt(jwtUtil.extractUserId(token));
+        String email = jwtUtil.extractEmail(token);
+        String accountType = jwtUtil.extractAccountType(token);
+        String profilePhoto = jwtUtil.extractProfilePhoto(token);
+
+        Map<String, Object> response = new HashMap<>();
+
+        response.put("token", token);
+        response.put("id", id);
+        response.put("email", email);
+        response.put("accountType", accountType);
+        response.put("profilePhoto", profilePhoto);
+
+        auditLogService.log(
+                id,
+                "LOGIN",
+                "AUTH",
+                "USER",
+                String.valueOf(id),
+                "User logged in using Google",
+                "SUCCESS");
+
+        return ResponseEntity.ok(response);
     }
 
 }

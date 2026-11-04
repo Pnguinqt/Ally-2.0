@@ -35,3 +35,7 @@ build/
 
 ### Environment Variables ###
 .env
+
+#Firebase
+
+/firebase/

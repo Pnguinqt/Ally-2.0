@@ -17,9 +17,6 @@ import jakarta.persistence.Inheritance;
 import jakarta.persistence.InheritanceType;
 import jakarta.persistence.Table;
 
-
-
-
 @Entity
 @Table(name = "users")
 @Inheritance(strategy = InheritanceType.JOINED)
@@ -52,31 +49,32 @@ public abstract class UserEntity {
     private String city;
 
     @Column(name = "province", nullable = true)
-    private String province;    
+    private String province;
     @Column(name = "zip", nullable = true)
     private String zip;
-    
+
     @Column(name = "profile_photo_url")
     private String profilePhotoUrl;
-    
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-
     @Column(name = "is_verified", nullable = false)
     private boolean isVerified = false;
 
+    @Column(name = "firebase_uid", unique = true, nullable = true)
+    private String firebaseUid;
+
     @Enumerated(EnumType.STRING)
     private AccountType accountType;
-
-    
 
     public UserEntity() {
         super();
     }
 
-    public UserEntity(int userId, String email, String password, String Fname,String Lname, LocalDateTime createdAt, boolean isVerified, Long phoneNumber, String address, String city, String province, String zip) {
+    public UserEntity(int userId, String email, String password, String Fname, String Lname, LocalDateTime createdAt,
+            boolean isVerified, Long phoneNumber, String address, String city, String province, String zip) {
         super();
         this.userId = userId;
         this.Fname = Fname;
@@ -150,10 +148,11 @@ public abstract class UserEntity {
     public void setVerified(boolean isVerified) {
         this.isVerified = isVerified;
     }
+
     public AccountType getAccountType() {
         return accountType;
     }
-    
+
     public void setAccountType(AccountType accountType) {
         this.accountType = accountType;
     }
@@ -161,39 +160,57 @@ public abstract class UserEntity {
     public Long getPhoneNumber() {
         return phoneNumber;
     }
+
     public void setPhoneNumber(Long phoneNumber) {
         this.phoneNumber = phoneNumber;
     }
+
     public String getAddress() {
         return address;
     }
+
     public void setAddress(String address) {
         this.address = address;
     }
+
     public String getCity() {
         return city;
     }
+
     public void setCity(String city) {
         this.city = city;
     }
+
     public String getProvince() {
         return province;
     }
+
     public void setProvince(String province) {
         this.province = province;
-    }    public String getZip() {
+    }
+
+    public String getZip() {
         return zip;
     }
+
     public void setZip(String zip) {
         this.zip = zip;
     }
-    
+
     public String getProfilePhotoUrl() {
         return profilePhotoUrl;
     }
-    
+
     public void setProfilePhotoUrl(String profilePhotoUrl) {
         this.profilePhotoUrl = profilePhotoUrl;
     }
-    
+
+    public String getFirebaseUid() {
+        return firebaseUid;
+    }
+
+    public void setFirebaseUid(String firebaseUid) {
+        this.firebaseUid = firebaseUid;
+    }
+
 }
