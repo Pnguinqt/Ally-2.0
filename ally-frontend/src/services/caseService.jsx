@@ -184,7 +184,8 @@ export const caseService = {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to accept case');
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || 'Failed to accept case');
       }
 
       return await response.json();

@@ -97,6 +97,9 @@ public class LegalCaseService {
     }
     
     public LegalCasesEntity updateCaseStatus(int caseId, CaseStatus status) {
+        if (status == CaseStatus.ACCEPTED) {
+            throw new IllegalArgumentException("Use the case acceptance action to generate the document PIN");
+        }
         LegalCasesEntity legalCase = legalCaseRepo.findById(caseId)
                 .orElseThrow(() -> new RuntimeException("Case not found with ID: " + caseId));
         legalCase.setStatus(status);
@@ -136,8 +139,9 @@ public class LegalCaseService {
         return legalCaseRepo.save(legalCase);
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public LegalCasesEntity acceptCase(int caseId, int lawyerIdPerformingAction) {
-        LegalCasesEntity legalCase = legalCaseRepo.findById(caseId)
+        LegalCasesEntity legalCase = legalCaseRepo.findByIdForHearingBooking(caseId)
                 .orElseThrow(() -> new RuntimeException("Case not found with ID: " + caseId));
 
         // Authorization check
@@ -145,6 +149,17 @@ public class LegalCaseService {
             throw new RuntimeException("Lawyer " + lawyerIdPerformingAction + " is not authorized to accept case " + caseId);
         }
 
+        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof com.wachichaw.User.Entity.UserEntity actor)
+                || actor.getUserId() != lawyerIdPerformingAction || !"LAWYER".equals(actor.getAccountType().toString())) {
+            throw new RuntimeException("Only the assigned authenticated lawyer can accept this case");
+        }
+        if (legalCase.getStatus() != CaseStatus.PENDING || legalCase.getDocumentPinHash() != null) {
+            throw new RuntimeException("Only pending cases can be accepted");
+        }
+        String pin = String.format(java.util.Locale.ROOT, "%04d", new java.security.SecureRandom().nextInt(10000));
+        legalCase.setDocumentPinHash(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(pin));
+        legalCase.setGeneratedDocumentPin(pin);
         legalCase.setStatus(CaseStatus.ACCEPTED);
         return legalCaseRepo.save(legalCase);
     }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, Loader2, NotebookPen, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { caseService as productionCaseService } from '../services/caseService.jsx';
@@ -25,6 +25,9 @@ const LegalWorkspacePage = () => {
   const [caseSidebarCollapsed, setCaseSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [acceptingCaseId, setAcceptingCaseId] = useState(null);
+  const acceptingCase = useRef(false);
+  const [documentPinNotice, setDocumentPinNotice] = useState(null);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -121,6 +124,33 @@ const LegalWorkspacePage = () => {
 
   const participant = getParticipant(selectedCase, authData?.accountType);
   const caseTimeline = getCaseTimeline(selectedCase);
+  const canAcceptCase = authData?.accountType === 'LAWYER'
+    && selectedCase?.status === 'PENDING'
+    && Number(selectedCase?.lawyer?.userId) === Number(authData.userId);
+
+  const acceptSelectedCase = async () => {
+    if (!canAcceptCase || acceptingCase.current) return;
+    const caseId = selectedCase.caseId;
+    acceptingCase.current = true;
+    setAcceptingCaseId(caseId);
+    try {
+      const accepted = await caseService.acceptCase(caseId);
+      // Preserve participant details: the acceptance response is a case entity,
+      // while the workspace list uses DTOs with client and lawyer information.
+      setCases(current => current.map(item => item.caseId === caseId
+        ? { ...item, status: accepted.status || 'ACCEPTED' }
+        : item));
+      if (accepted.generatedDocumentPin) {
+        setDocumentPinNotice({ caseId, pin: accepted.generatedDocumentPin });
+      }
+      toast.success('Case accepted. Document access is now available with the case PIN.');
+    } catch (error) {
+      toast.error(error.message || 'Failed to accept case. Please try again.');
+    } finally {
+      acceptingCase.current = false;
+      setAcceptingCaseId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -135,6 +165,16 @@ const LegalWorkspacePage = () => {
 
   return (
     <div className="px-4 py-4 mx-auto max-w-7xl lg:flex lg:h-[calc(100dvh-var(--workspace-offset,4rem))] lg:min-h-0 lg:flex-col">
+      {documentPinNotice && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="workspace-generated-pin-title">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 text-center shadow-xl">
+            <h2 id="workspace-generated-pin-title" className="text-xl font-semibold">Case accepted — save your document PIN</h2>
+            <p className="mt-3 text-sm text-gray-600">Case #{documentPinNotice.caseId}. This PIN is shown once. Save it securely and share it with your client. You will both need it to unlock Documents.</p>
+            <p className="my-6 font-mono text-4xl tracking-widest">{documentPinNotice.pin}</p>
+            <button autoFocus className="w-full rounded-lg bg-blue-600 p-3 text-white" onClick={() => setDocumentPinNotice(null)}>I saved the PIN</button>
+          </div>
+        </div>
+      )}
       <div className="mb-4 shrink-0">
         <h1 className="text-xl font-bold text-gray-900">Legal Workspace</h1>
         <p className="mt-1 text-sm text-gray-500">Choose a case, then open the tool you need.</p>
@@ -167,7 +207,16 @@ const LegalWorkspacePage = () => {
                     <h2 title={selectedCase.title} className="mt-1 text-lg font-bold text-gray-900 line-clamp-2">{selectedCase.title || 'Untitled case'}</h2>
                     <p className="mt-1 text-xs text-gray-500">{participant.label}: {participant.name || 'N/A'}</p>
                   </div>
-                  <span className={`shrink-0 px-2 py-1 text-xs font-semibold rounded-full ${statusClass(selectedCase.status)}`}>{selectedCase.status}</span>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClass(selectedCase.status)}`}>{selectedCase.status}</span>
+                    {canAcceptCase && (
+                      <button type="button" onClick={acceptSelectedCase} disabled={acceptingCaseId !== null}
+                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60">
+                        {acceptingCaseId === selectedCase.caseId ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                        {acceptingCaseId === selectedCase.caseId ? 'Accepting…' : 'Accept Case'}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <WorkspaceTabs activeTab={activeTab} onChange={setActiveTab} documentCount={documentCounts[selectedCase.caseId] || 0} />
               </div>

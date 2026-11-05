@@ -1,7 +1,6 @@
 package com.wachichaw.Document.Controller;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -12,12 +11,10 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,9 +24,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.google.cloud.storage.Blob;
-import com.google.cloud.storage.Bucket;
-import com.google.firebase.cloud.StorageClient;
 import com.wachichaw.Audit.Service.AuditLogService;
 import com.wachichaw.Case.Entity.LegalCasesEntity;
 import com.wachichaw.Case.Repo.LegalCaseRepo;
@@ -62,8 +56,6 @@ public class DocumentController {
     @Autowired
     private DocumentSummaryService documentSummaryService;
 
-    @Value("${storage.type:local}")
-    private String storageType;
     
     public DocumentController(DocumentService documentService) {
         this.documentService = documentService;
@@ -209,101 +201,11 @@ public class DocumentController {
      * Download document with access control
      */
     @GetMapping("/{documentId}/download")
-    public ResponseEntity<?> downloadDocument(
-            @PathVariable int documentId,
-            HttpServletRequest request) {
-        try {
-            // Extract user info from JWT token
-            String[] userInfo = extractUserFromRequest(request);
-            int userId = Integer.parseInt(userInfo[0]);
-            String userRole = userInfo[1];
-
-            // Retrieve document with access validation
-            DocumentEntity document = documentService.retrieveDocument(documentId, userId, userRole);
-
-            // Prepare file for download from Firebase Storage
-            String fileUrl = document.getFilePath();
-            if (fileUrl == null || fileUrl.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body("File URL not found");
-            }
-
-            try {
-                if (!"firebase".equalsIgnoreCase(storageType)) {
-                    Path localPath = Paths.get(fileUrl).normalize();
-                    if (!Files.exists(localPath)) {
-                        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                            .body("File not found in local storage");
-                    }
-
-                    byte[] fileContent = Files.readAllBytes(localPath);
-                    String contentType = Files.probeContentType(localPath);
-                    if (contentType == null) {
-                        contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
-                    }
-
-                    InputStreamResource resource = new InputStreamResource(
-                        new java.io.ByteArrayInputStream(fileContent));
-
-                    return ResponseEntity.ok()
-                        .contentType(MediaType.parseMediaType(contentType))
-                        .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\"" + document.getDocumentName() + "\"")
-                        .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileContent.length))
-                        .body(resource);
-                }
-
-                // Extract file name from URL for Firebase Storage access
-                String blobName;
-                if (fileUrl.contains("/o/")) {
-                    // Extract blob name from Firebase Storage URL
-                    blobName = fileUrl.substring(fileUrl.indexOf("/o/") + 3, fileUrl.indexOf("?alt=media"));
-                    blobName = java.net.URLDecoder.decode(blobName, StandardCharsets.UTF_8.toString());
-                } else {
-                    // Fallback: assume the URL contains the path directly
-                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Invalid file URL format");
-                }
-
-                // Get the file from Firebase Storage using Admin SDK
-                Bucket bucket = StorageClient.getInstance().bucket();
-                Blob blob = bucket.get(blobName);
-                
-                if (blob == null || !blob.exists()) {
-                    return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body("File not found in storage");
-                }
-
-                // Get file content as byte array
-                byte[] fileContent = blob.getContent();
-                
-                // Determine content type
-                String contentType = blob.getContentType();
-                if (contentType == null) {
-                    contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
-                }
-
-                // Create InputStreamResource from byte array
-                InputStreamResource resource = new InputStreamResource(
-                    new java.io.ByteArrayInputStream(fileContent));
-
-                return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + document.getDocumentName() + "\"")
-                    .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileContent.length))
-                    .body(resource);
-                    
-            } catch (Exception e) {
-                // Handle cases where the file cannot be accessed from Firebase Storage
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to download file: " + e.getMessage());
-            }
-
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body("Download failed: " + e.getMessage());
-        }
+    public ResponseEntity<?> legacyDownloadDocument() {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+            .header(HttpHeaders.ALLOW, "POST")
+            .header(HttpHeaders.CACHE_CONTROL, "no-store")
+            .body(Map.of("message", "Use the PIN-protected download action."));
     }
 
     /**
