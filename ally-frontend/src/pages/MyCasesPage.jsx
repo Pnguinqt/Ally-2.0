@@ -20,6 +20,7 @@ const MyCasesPage = () => {
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [authData, setAuthData] = useState(null);
   const [trackedCaseId, setTrackedCaseId] = useState(null);
+  const [documentPinNotice, setDocumentPinNotice] = useState(null);
 
   // Get auth data on component mount
   useEffect(() => {
@@ -94,7 +95,8 @@ const MyCasesPage = () => {
   const handleStatusChange = async (caseId, newStatus) => {
     try {
       if (newStatus === 'ACCEPTED') {
-        await caseService.acceptCase(caseId);
+        const accepted = await caseService.acceptCase(caseId);
+        if (accepted.generatedDocumentPin) setDocumentPinNotice({ caseId, pin: accepted.generatedDocumentPin });
       } else if (newStatus === 'DECLINED') {
         await caseService.declineCase(caseId);
       } else {
@@ -167,6 +169,16 @@ const MyCasesPage = () => {
 
   return (
     <>
+      {documentPinNotice && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="generated-pin-title">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 text-center shadow-xl">
+            <h2 id="generated-pin-title" className="text-xl font-semibold">Case accepted — save your document PIN</h2>
+            <p className="mt-3 text-sm text-gray-600">Case #{documentPinNotice.caseId}. This PIN is shown once. Save it securely and share it with your client. You will both need it to unlock Documents.</p>
+            <p className="my-6 font-mono text-4xl tracking-widest">{documentPinNotice.pin}</p>
+            <button autoFocus className="w-full rounded-lg bg-blue-600 p-3 text-white" onClick={() => setDocumentPinNotice(null)}>I saved the PIN</button>
+          </div>
+        </div>
+      )}
       {/* Case Submission Modal */}
       {showSubmissionForm && (
         <CaseSubmissionForm

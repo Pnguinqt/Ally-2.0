@@ -164,16 +164,16 @@ public class LegalCasesController {
 
 
     @PutMapping("/{caseId}/accept/{lawyerId}")
-    public ResponseEntity<LegalCasesEntity> acceptCase(@PathVariable int caseId, @PathVariable int lawyerId) {
+    public ResponseEntity<?> acceptCase(@PathVariable int caseId, @PathVariable int lawyerId) {
         try {
             // The service method LegalCaseService.acceptCase now contains the refined logic
             LegalCasesEntity updatedCase = LegalCaseService.acceptCase(caseId, lawyerId);
             auditLogService.log(lawyerId, "ACCEPT_CASE", "CASE", "CASE", String.valueOf(caseId),
                 "Lawyer accepted case #" + caseId, "SUCCESS");
-            return ResponseEntity.ok(updatedCase);
+            return ResponseEntity.ok().header("Cache-Control", "no-store").body(updatedCase);
         } catch (RuntimeException e) { // Catch specific exceptions if preferred
             e.printStackTrace(); // Or log more appropriately
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(null); // Or a proper error DTO
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage() == null ? "Unable to accept case" : e.getMessage()));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();

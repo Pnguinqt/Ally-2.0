@@ -4,6 +4,53 @@ import { getAuthData } from '../utils/auth.jsx';
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api/documents`;
 
 export const documentService = {
+  previewDocument: async (documentId, pin, signal) => {
+    const auth = getAuthData();
+    if (!auth) throw new Error('Please log in again.');
+    const response = await fetch(`${API_BASE_URL}/${documentId}/preview`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }), signal, cache: 'no-store',
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Unable to preview document. Check the case PIN.');
+    }
+    return response.blob();
+  },
+  verifyPreviewPin: async (caseId, pin, signal) => {
+    const auth = getAuthData();
+    if (!auth) throw new Error('Please log in again.');
+    const response = await fetch(`${API_BASE_URL}/case/${caseId}/pin/verify`, {
+      method: 'POST', headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin }), signal, cache: 'no-store',
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Unable to preview file. Check the case PIN.');
+    }
+  },
+  setupPin: async (caseId) => {
+    const auth = getAuthData();
+    const response = await fetch(`${API_BASE_URL}/case/${caseId}/pin/setup`, {
+      method: 'POST', headers: { Authorization: `Bearer ${auth.token}` },
+    });
+    if (!response.ok) throw new Error('Only the assigned lawyer can set up a PIN for an accepted case that has no PIN.');
+    return response.json();
+  },
+  pinAccess: async (caseId, pin) => {
+    const auth = getAuthData();
+    const response = await fetch(`${API_BASE_URL}/case/${caseId}/pin`, {
+      method: pin === undefined ? 'GET' : 'POST',
+      headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
+      ...(pin === undefined ? {} : { body: JSON.stringify({ pin }) }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || (response.status === 429 ? 'Too many attempts. Try again in 15 minutes.' : 'Unable to unlock documents. Check the four-digit PIN.'));
+    }
+    return response.json();
+  },
   // Get documents for a specific case
   getCaseDocuments: async (caseId) => {
     try {
@@ -164,7 +211,7 @@ export const documentService = {
   },
 
   // Download a document
-  downloadDocument: async (documentId, documentName) => {
+  downloadDocument: async (documentId, documentName, pin, signal) => {
     try {
       const authData = getAuthData();
       if (!authData) {
@@ -172,23 +219,21 @@ export const documentService = {
       }
 
       const response = await fetch(`${API_BASE_URL}/${documentId}/download`, {
-        method: 'GET',
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${authData.token}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ pin }), signal, cache: 'no-store',
       });
 
       if (!response.ok) {
-        if (response.status === 403) {
-          throw new Error('You do not have permission to download this document');
-        }
-        if (response.status === 404) {
-          throw new Error('Document not found');
-        }
-        throw new Error('Failed to download document');
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || 'Unable to download file. Check the case PIN.');
       }
 
       const blob = await response.blob();
+      if (signal?.aborted) return false;
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
