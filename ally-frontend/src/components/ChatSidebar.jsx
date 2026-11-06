@@ -111,6 +111,7 @@ const ChatSidebar = () => {
           .filter(item => {
             // Hide Find Lawyer for lawyers
             const isLawyer = authData?.accountType === 'LAWYER';
+            if (item.path === '/my-cases' && authData?.accountType === 'CLIENT') return false;
             if (item.path === '/lawyers' && isLawyer) return false;
             return true;
           })

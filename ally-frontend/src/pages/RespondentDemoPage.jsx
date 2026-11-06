@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, ClipboardList, LockKeyhole, RotateCcw, ShieldCheck } from 'lucide-react';
 import PageLayout from '../components/PageLayout';
-import MyCasesPage from './MyCasesPage';
 import LegalWorkspacePage from './LegalWorkspacePage';
 import DocumentsPage from './DocumentsPage';
 import { LawyerDirectoryPage } from './LawyerDirectoryPage';
@@ -22,6 +21,11 @@ function DemoChatRedirect() {
   const params = new URLSearchParams(search);
   params.set('assistant', 'open');
   return <Navigate to={`/demo/workspace?${params.toString()}`} replace />;
+}
+
+function DemoMyCasesRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/demo/workspace${search}`} replace />;
 }
 
 export default function RespondentDemoPage() {
@@ -80,14 +84,14 @@ export default function RespondentDemoPage() {
         <Routes>
           <Route index element={<Navigate to="chat?mode=normal" replace />} />
           <Route path="chat" element={<DemoChatRedirect />} />
-          <Route path="my-cases" element={<MyCasesPage />} />
+          <Route path="my-cases" element={<DemoMyCasesRedirect />} />
           <Route path="workspace" element={<LegalWorkspacePage />} />
           <Route path="documents" element={<DocumentsPage />} />
           <Route path="documents/:caseId" element={<DocumentsPage />} />
           <Route path="lawyers" element={<LawyerDirectoryPage />} />
           <Route path="appointments" element={<AppointmentsPage />} />
           <Route path="settings/*" element={<AccountSettings />} />
-          <Route path="cases/new" element={<Navigate to="/demo/my-cases?new=1" replace />} />
+          <Route path="cases/new" element={<Navigate to="/demo/workspace?new=1" replace />} />
           <Route path="workspace/:tab" element={<Navigate to="/demo/workspace" replace />} />
           <Route path="*" element={<Navigate to="/demo/chat" replace />} />
         </Routes>

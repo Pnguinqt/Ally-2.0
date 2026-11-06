@@ -61,6 +61,28 @@ class DeepSeekChatServiceTest {
         server.verify();
     }
 
+    @Test void caseDraftingUsesItsOwnBoundedJsonPromptWithoutChatHistory() throws Exception {
+        String draft = "{\"title\":\"Unpaid personal loan\",\"description\":\"A friend has not repaid the money I lent them.\"}";
+        String response = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(
+            java.util.Map.of("choices", List.of(java.util.Map.of("message", java.util.Map.of("content", draft), "finish_reason", "stop"))));
+        server.expect(requestTo("https://example.test/chat/completions"))
+            .andExpect(jsonPath("$.response_format.type").value("json_object"))
+            .andExpect(jsonPath("$.max_tokens").value(1500))
+            .andExpect(jsonPath("$.messages.length()").value(2))
+            .andExpect(jsonPath("$.messages[0].content").value(containsString("Do not invent")))
+            .andExpect(jsonPath("$.messages[1].content").value("{\"facts\":\"Unpaid loan\"}"))
+            .andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
+        assertEquals(draft, service.draftCase("{\"facts\":\"Unpaid loan\"}", "English"));
+        server.verify();
+    }
+
+    @Test void caseDraftingRejectsIncompleteModelResponses() {
+        server.expect(requestTo("https://example.test/chat/completions"))
+            .andRespond(withSuccess(completion("unfinished", "length"), MediaType.APPLICATION_JSON));
+        assertThrows(IllegalStateException.class, () -> service.draftCase("{}", "English"));
+        server.verify();
+    }
+
     @Test void exhaustedContinuationBudgetIsExplicit() {
         ReflectionTestUtils.setField(service, "maxContinuations", 0);
         server.expect(requestTo("https://example.test/chat/completions"))

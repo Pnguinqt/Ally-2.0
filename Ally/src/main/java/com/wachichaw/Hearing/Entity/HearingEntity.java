@@ -32,6 +32,11 @@ public class HearingEntity {
     @Column(nullable = false)
     private String location;
 
+    private String meetingType;
+
+    @Column(length = 2048)
+    private String meetingLink;
+
     @Column(length = 4000)
     private String notes;
 
@@ -40,4 +45,10 @@ public class HearingEntity {
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
+
+    // Nullable for appointments booked before the proposal workflow was introduced.
+    private String status;
+    private Integer proposedBy;
+    private Integer acceptedBy;
+    private Long revision;
 }
