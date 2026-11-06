@@ -30,7 +30,7 @@ import MyCasesPage from './pages/MyCasesPage'
 import OAuth2RedirectHandler from './pages/OAuth2RedirectHandler'
 import { SidebarProvider } from './contexts/SidebarContext'
 import PageLayout from './components/PageLayout.jsx'
-import { validateAndGetAuthData } from './utils/auth.jsx'
+import { getAuthData, validateAndGetAuthData } from './utils/auth.jsx'
 import NotFound from './pages/NotFound'
 import LanguageSwitcher from './components/LanguageSwitcher'
 import RespondentDemoPage from './pages/RespondentDemoPage'
@@ -40,6 +40,13 @@ const LayoutRoutes = () => (
     <Outlet />
   </PageLayout>
 )
+
+const MyCasesRoute = () => {
+  const { search } = useLocation();
+  return getAuthData()?.accountType === 'CLIENT'
+    ? <Navigate to={`/workspace${search}`} replace />
+    : <MyCasesPage />;
+};
 
 // Pages with the shared navigation bar provide their language control there.
 const FallbackLanguageSwitcher = () => {
@@ -105,7 +112,7 @@ function AppContent() {
             <Route path="/messages/:chatroomId" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
             <Route path="/chat" element={<ProtectedRoute><ChatContainer /></ProtectedRoute>} />
             <Route path="/appointments" element={<ProtectedRoute><AppointmentsPage /></ProtectedRoute>} />
-            <Route path="/my-cases" element={<ProtectedRoute><MyCasesPage /></ProtectedRoute>} />
+            <Route path="/my-cases" element={<ProtectedRoute><MyCasesRoute /></ProtectedRoute>} />
             <Route path="/workspace" element={<ProtectedRoute><LegalWorkspacePage /></ProtectedRoute>} />
             <Route path="/documents" element={<ProtectedRoute><DocumentsPage /></ProtectedRoute>} />
             <Route path="/documents/:caseId" element={<ProtectedRoute><DocumentsPage /></ProtectedRoute>} />

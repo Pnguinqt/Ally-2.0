@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, Loader2, NotebookPen, UserRound } from 'lucide-react';
+import { BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, Loader2, NotebookPen, Plus, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { caseService as productionCaseService } from '../services/caseService.jsx';
 import { documentService as productionDocumentService } from '../services/documentService.js';
@@ -8,6 +8,7 @@ import { useSearchParams } from 'react-router-dom';
 import { getAuthData } from '../utils/auth.jsx';
 import CaseDocumentManager from '../components/CaseDocumentManager.jsx';
 import CaseHearingCalendar from '../components/CaseHearingCalendar.jsx';
+import CaseSubmissionForm from '../components/CaseSubmissionForm.jsx';
 import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import WorkspaceCaseSidebar from '../components/WorkspaceCaseSidebar.jsx';
 import { workspaceCaseGroup } from '../utils/workspaceCases.js';
@@ -16,7 +17,7 @@ const LegalWorkspacePage = () => {
   const demo = useDemoRuntime();
   const caseService = demo?.caseService || productionCaseService;
   const documentService = demo?.documentService || productionDocumentService;
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [authData, setAuthData] = useState(null);
   const [cases, setCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
@@ -29,6 +30,17 @@ const LegalWorkspacePage = () => {
   const [acceptingCaseId, setAcceptingCaseId] = useState(null);
   const acceptingCase = useRef(false);
   const [documentPinNotice, setDocumentPinNotice] = useState(null);
+  const [showSubmissionForm, setShowSubmissionForm] = useState(false);
+  const [caseListVersion, setCaseListVersion] = useState(0);
+  const submittedCaseId = useRef(null);
+
+  useEffect(() => {
+    if (authData?.accountType !== 'CLIENT' || !searchParams.get('new')) return;
+    setShowSubmissionForm(true);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('new');
+    setSearchParams(nextParams, { replace: true });
+  }, [authData, searchParams, setSearchParams]);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
@@ -61,12 +73,14 @@ const LegalWorkspacePage = () => {
           : await caseService.getClientCases(authData.userId);
         if (!active) return;
         const visibleCases = sortCasesByRecency((caseList || []).filter(item => workspaceCaseGroup(item) !== null));
-        const initialTab = ['recent', 'completed', 'declined'].find(group =>
+        const submittedCase = visibleCases.find(item => Number(item.caseId) === Number(submittedCaseId.current));
+        const initialTab = (submittedCase && workspaceCaseGroup(submittedCase)) || ['recent', 'completed', 'declined'].find(group =>
           visibleCases.some(item => workspaceCaseGroup(item) === group)) || 'recent';
         const initialCases = visibleCases.filter(item => workspaceCaseGroup(item) === initialTab);
         setCases(visibleCases);
         setCaseListTab(initialTab);
-        setSelectedCaseId(initialCases[0]?.caseId || null);
+        setSelectedCaseId(submittedCase?.caseId || initialCases[0]?.caseId || null);
+        submittedCaseId.current = null;
         const counts = await Promise.all(visibleCases.map(async item =>
           [item.caseId, await documentService.getDocumentCount(item.caseId)]));
         if (!active) return;
@@ -82,7 +96,7 @@ const LegalWorkspacePage = () => {
     };
     load();
     return () => { active = false; };
-  }, [authData]);
+  }, [authData, caseListVersion]);
 
   useEffect(() => {
     if (!authData || !selectedCaseId) {
@@ -176,9 +190,29 @@ const LegalWorkspacePage = () => {
           </div>
         </div>
       )}
-      <div className="mb-4 shrink-0">
-        <h1 className="text-xl font-bold text-gray-900">Legal Workspace</h1>
-        <p className="mt-1 text-sm text-gray-500">Choose a case, then open the tool you need.</p>
+      {showSubmissionForm && authData?.accountType === 'CLIENT' && (
+        <CaseSubmissionForm
+          onClose={() => setShowSubmissionForm(false)}
+          onSuccess={savedCase => {
+            setShowSubmissionForm(false);
+            submittedCaseId.current = savedCase.caseId;
+            setActiveTab('overview');
+            setCaseListVersion(value => value + 1);
+          }}
+        />
+      )}
+      <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Legal Workspace</h1>
+          <p className="mt-1 text-sm text-gray-500">Choose a case, then open the tool you need.</p>
+        </div>
+        {authData?.accountType === 'CLIENT' && (
+          <button type="button" onClick={() => setShowSubmissionForm(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
+            <Plus className="h-4 w-4" />
+            Submit New Case
+          </button>
+        )}
       </div>
 
       <div className={`grid flex-1 min-h-0 gap-4 ${caseSidebarCollapsed ? 'lg:grid-cols-[64px_minmax(0,1fr)]' : 'lg:grid-cols-[280px_minmax(0,1fr)]'}`}>

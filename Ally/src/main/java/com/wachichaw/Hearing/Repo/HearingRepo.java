@@ -9,4 +9,7 @@ public interface HearingRepo extends JpaRepository<HearingEntity, Long> {
     List<HearingEntity> findByLegalCaseCaseIdOrderByStartsAtAsc(int caseId);
 
     boolean existsByLegalCaseCaseIdAndStartsAtLessThanAndEndsAtGreaterThan(int caseId, Instant endsAt, Instant startsAt);
+
+    boolean existsByLegalCaseCaseIdAndHearingIdNotAndStartsAtLessThanAndEndsAtGreaterThan(
+        int caseId, Long hearingId, Instant endsAt, Instant startsAt);
 }

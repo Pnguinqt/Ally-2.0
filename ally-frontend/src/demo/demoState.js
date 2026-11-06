@@ -8,8 +8,8 @@ export const SAMPLE_NAME = 'G.R. No. 233460.pdf';
 export const quests = [
   { id: 'chat', title: 'Try normal queries', detail: 'With Case Search OFF, ask a Philippine legal question and review the explanation. Try a follow-up, too.', path: '/demo/chat?mode=normal', action: 'Open normal queries' },
   { id: 'case-search', title: 'Try Case Search', detail: 'With Case Search ON, search for Supreme Court decisions involving civil cases and review the results or no-match message. Open any returned official sources.', path: '/demo/chat?mode=case-search', action: 'Open Case Search' },
-  { id: 'case', title: 'Create a civil case', detail: 'Use Submit New Case in My Cases and choose an existing lawyer.', path: '/demo/my-cases?new=1', action: 'Create civil case' },
-  { id: 'workspace', title: 'Explore your collaboration workspace', detail: 'Review Overview and Hearings, then add a workspace note.', path: '/demo/workspace?tab=overview', action: 'Open workspace' },
+  { id: 'case', title: 'Create a civil case', detail: 'Use Submit New Case in Case Workspace and choose an existing lawyer.', path: '/demo/workspace?new=1', action: 'Create civil case' },
+  { id: 'workspace', title: 'Explore your collaboration workspace', detail: 'Review Overview and Appointment Calendar, then add a workspace note.', path: '/demo/workspace?tab=overview', action: 'Open workspace' },
   { id: 'upload', title: 'Upload the sample PDF', detail: 'Download the supplied decision, select it, and click Upload All.', path: '/demo/workspace?tab=documents', action: 'Go to documents' },
   { id: 'summary', title: 'Summarize the document', detail: 'Use the document’s Summarize button and compare the output with the PDF.', path: '/demo/workspace?tab=documents', action: 'Summarize PDF' },
 ].map(quest => ({ ...quest, hints: questHints[quest.id] }));
@@ -77,6 +77,7 @@ export function demoReducer(state, action) {
         .map(([id, chat]) => [id, { ...chat, messages: remove(chat.messages) }])) };
     }
     case 'update-case': return { ...state, legalCase: action.legalCase };
+    case 'case-appointments': return { ...state, caseAppointments: action.items };
     case 'appointment': return { ...state, appointments: [...(state.appointments || []), action.appointment] };
     case 'cancel-appointment': return { ...state, appointments: (state.appointments || []).filter(item => item.scheduleId !== action.id) };
     case 'delete-document': return { ...state, document: null, summary: null, completed: state.completed.filter(id => !['upload', 'summary'].includes(id)) };

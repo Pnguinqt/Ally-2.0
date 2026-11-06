@@ -6,6 +6,7 @@ import { caseService as productionCaseService } from '../services/caseService.js
 import { useDemoRuntime } from '../demo/DemoContext';
 import { getAuthData } from '../utils/auth.jsx';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/modalScrollLock';
+import CaseDraftAssistant from './CaseDraftAssistant.jsx';
 
 const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) => {
   const demo = useDemoRuntime();
@@ -207,7 +208,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
             : 'Case details updated successfully.'
         );
       } else {
-        navigate(demo ? demo.path('/my-cases') : '/my-cases');
+        navigate(demo ? demo.path('/workspace') : '/workspace');
       }
     } catch (err) {
       console.error(`Error ${isEditing ? 'updating' : 'submitting'} case:`, err);
@@ -327,6 +328,12 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
             </div>
           )}
 
+          <CaseDraftAssistant formData={formData} caseType={caseType} disabled={isSubmitting}
+            onApply={suggestion => {
+              setFormData(current => ({ ...current, ...suggestion }));
+              setErrors(current => ({ ...current, ...Object.fromEntries(Object.keys(suggestion).map(field => [field, ''])) }));
+            }} />
+
           {/* Case Title */}
           <div>
             <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
@@ -336,6 +343,7 @@ const CaseSubmissionForm = ({ onClose, onSuccess, selectedLawyer, caseToEdit }) 
               type="text"
               id="title"
               name="title"
+              maxLength={255}
               value={formData.title}
               onChange={handleInputChange}
               placeholder="Brief title describing your legal issue"
