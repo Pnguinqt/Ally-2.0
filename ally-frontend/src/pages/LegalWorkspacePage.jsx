@@ -10,6 +10,7 @@ import CaseDocumentManager from '../components/CaseDocumentManager.jsx';
 import CaseHearingCalendar from '../components/CaseHearingCalendar.jsx';
 import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import WorkspaceCaseSidebar from '../components/WorkspaceCaseSidebar.jsx';
+import { workspaceCaseGroup } from '../utils/workspaceCases.js';
 
 const LegalWorkspacePage = () => {
   const demo = useDemoRuntime();
@@ -59,11 +60,13 @@ const LegalWorkspacePage = () => {
           ? await caseService.getLawyerCases(authData.userId)
           : await caseService.getClientCases(authData.userId);
         if (!active) return;
-        const visibleCases = sortCasesByRecency((caseList || []).filter(item => item.status !== 'CANCELLED'));
-        const initialCases = visibleCases.filter(item => !isCompletedCase(item));
+        const visibleCases = sortCasesByRecency((caseList || []).filter(item => workspaceCaseGroup(item) !== null));
+        const initialTab = ['recent', 'completed', 'declined'].find(group =>
+          visibleCases.some(item => workspaceCaseGroup(item) === group)) || 'recent';
+        const initialCases = visibleCases.filter(item => workspaceCaseGroup(item) === initialTab);
         setCases(visibleCases);
-        setCaseListTab(initialCases.length > 0 ? 'recent' : 'completed');
-        setSelectedCaseId(initialCases[0]?.caseId || visibleCases[0]?.caseId || null);
+        setCaseListTab(initialTab);
+        setSelectedCaseId(initialCases[0]?.caseId || null);
         const counts = await Promise.all(visibleCases.map(async item =>
           [item.caseId, await documentService.getDocumentCount(item.caseId)]));
         if (!active) return;
@@ -104,10 +107,8 @@ const LegalWorkspacePage = () => {
     [cases, selectedCaseId]
   );
 
-  const recentCases = useMemo(() => cases.filter(caseItem => !isCompletedCase(caseItem)), [cases]);
-  const completedCases = useMemo(() => cases.filter(isCompletedCase), [cases]);
   const changeCaseListTab = (nextTab, scopedCases = cases) => {
-    const nextCases = (nextTab === 'completed' ? completedCases : recentCases)
+    const nextCases = cases.filter(item => workspaceCaseGroup(item) === nextTab)
       .filter(item => scopedCases.some(candidate => candidate.caseId === item.caseId));
     setCaseListTab(nextTab);
     setSelectedCaseId(current => nextCases.some(item => item.caseId === Number(current))
@@ -371,8 +372,6 @@ const TimelineStep = ({ item, isLast }) => {
     </div>
   );
 };
-
-const isCompletedCase = caseItem => String(caseItem?.status || '').toUpperCase() === 'COMPLETED';
 
 const sortCasesByRecency = caseItems => [...caseItems].sort((first, second) => {
   const firstTimestamp = Date.parse(first.updatedAt || first.dateSubmitted || '') || 0;

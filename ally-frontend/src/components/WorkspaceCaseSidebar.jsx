@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { BriefcaseBusiness, Check, Maximize2, PanelLeftClose, PanelLeftOpen, Search, UserRound } from 'lucide-react';
 import CaseBrowserDialog from './CaseBrowserDialog.jsx';
-import { caseActivityTimestamp, organizeWorkspaceCases } from '../utils/workspaceCases.js';
+import { caseActivityTimestamp, organizeWorkspaceCases, workspaceCaseGroup } from '../utils/workspaceCases.js';
 
 const clientName = item => `${item.client?.Fname || ''} ${item.client?.Lname || ''}`.trim() || 'Unknown client';
 // Missing participant records stay separate instead of combining unrelated cases.
@@ -13,7 +13,7 @@ export default function WorkspaceCaseSidebar({ cases, isLawyer, activeTab, onTab
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState(false);
   const [order, setOrder] = useState('recent');
-  const activeCases = cases.filter(item => (item.status === 'COMPLETED') === (activeTab === 'completed'));
+  const activeCases = cases.filter(item => workspaceCaseGroup(item) === activeTab);
   const clients = useMemo(() => [...new Map(cases.map(item => [clientKey(item), {
     id: clientKey(item), name: clientName(item),
   }])).values()].sort((a, b) => a.name.localeCompare(b.name)), [cases]);
@@ -52,13 +52,13 @@ export default function WorkspaceCaseSidebar({ cases, isLawyer, activeTab, onTab
             </select>
           </div>
         )}
-        <div className="flex gap-1 p-1 bg-gray-100 rounded-lg" aria-label="Case status">
-          {[['recent', 'Active'], ['completed', 'Completed']].map(([id, label]) => (
+        <div className="grid grid-cols-3 gap-1 p-1 bg-gray-100 rounded-lg" aria-label="Case status">
+          {[['recent', 'Active'], ['completed', 'Completed'], ['declined', 'Declined']].map(([id, label]) => (
             <button key={id} type="button" aria-pressed={activeTab === id} onClick={() => onTabChange(id,
               cases.filter(item => !byClient || !selectedClient || clientKey(item) === selectedClient))}
-              className={`flex-1 rounded-md px-2 py-2 text-xs font-medium transition-colors ${activeTab === id ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:bg-white/70'}`}>
-              {label} <span className="ml-1 text-[11px] opacity-70">{cases.filter(item =>
-                (item.status === 'COMPLETED') === (id === 'completed') && (!byClient || !selectedClient || clientKey(item) === selectedClient)).length}</span>
+              className={`flex min-w-0 flex-col items-center gap-1 rounded-md px-1 py-2 text-xs font-medium transition-colors ${activeTab === id ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:bg-white/70'}`}>
+              {label} <span className="text-[11px] opacity-70">{cases.filter(item =>
+                workspaceCaseGroup(item) === id && (!byClient || !selectedClient || clientKey(item) === selectedClient)).length}</span>
             </button>
           ))}
         </div>
@@ -86,7 +86,7 @@ export default function WorkspaceCaseSidebar({ cases, isLawyer, activeTab, onTab
         </p>
         {filtered.length === 0 ? (
           <div className="px-3 py-8 text-center">
-            <p className="text-sm text-gray-500">{hasFilters ? 'No cases match your filters.' : `No ${activeTab === 'recent' ? 'active' : 'completed'} cases yet.`}</p>
+            <p className="text-sm text-gray-500">{hasFilters ? 'No cases match your filters.' : activeTab === 'declined' ? 'No declined cases yet.' : activeTab === 'completed' ? 'No completed cases yet.' : 'No active cases yet.'}</p>
             {hasFilters && <button type="button" onClick={() => { setSearch(''); setSelectedClient(''); setOrder('recent'); }}
               className="mt-3 text-sm font-medium text-blue-600 hover:underline">Clear filters</button>}
           </div>

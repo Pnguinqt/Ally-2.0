@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { caseActivityTimestamp, organizeWorkspaceCases } from './workspaceCases.js';
+import { caseActivityTimestamp, organizeWorkspaceCases, workspaceCaseGroup } from './workspaceCases.js';
 
 const now = Date.parse('2026-11-04T12:00:00+08:00');
 const daysAgo = days => new Date(now - days * 86400000).toISOString();
@@ -12,6 +12,24 @@ const cases = [
   { caseId: 5, title: 'Undated case', updatedAt: 'invalid' },
 ];
 const ids = items => items.map(item => item.caseId);
+
+test('workspace status filters separate declined cases while retaining client and date filters', () => {
+  const input = [
+    { caseId: 1, status: 'PENDING', clientId: 1, updatedAt: daysAgo(1) },
+    { caseId: 2, status: 'ACCEPTED', clientId: 1, updatedAt: daysAgo(1) },
+    { caseId: 3, status: 'COMPLETED', clientId: 1, updatedAt: daysAgo(1) },
+    { caseId: 4, status: 'DECLINED', clientId: 1, updatedAt: daysAgo(2) },
+    { caseId: 5, status: 'DECLINED', clientId: 2, updatedAt: daysAgo(1) },
+    { caseId: 6, status: 'DECLINED', clientId: 1, updatedAt: daysAgo(31) },
+    { caseId: 7, status: 'CANCELLED', clientId: 1, updatedAt: daysAgo(1) },
+  ];
+  const group = name => input.filter(item => workspaceCaseGroup(item) === name);
+  assert.deepEqual(ids(group('recent')), [1, 2]);
+  assert.deepEqual(ids(group('completed')), [3]);
+  assert.deepEqual(ids(group('declined')), [4, 5, 6]);
+  assert.deepEqual(ids(organizeWorkspaceCases(group('declined').filter(item => item.clientId === 1), 'week', now)), [4]);
+  assert.equal(workspaceCaseGroup({ status: 'declined' }), 'declined');
+});
 
 test('recent shows newest activity first, keeps undated cases, and does not mutate input', () => {
   assert.deepEqual(ids(organizeWorkspaceCases(cases, 'recent', now)), [3, 2, 4, 1, 5]);
