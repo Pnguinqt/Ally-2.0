@@ -1,3 +1,12 @@
+export function workspaceCaseGroup(item) {
+  switch (String(item?.status || '').toUpperCase()) {
+    case 'COMPLETED': return 'completed';
+    case 'DECLINED': return 'declined';
+    case 'CANCELLED': return null;
+    default: return 'recent';
+  }
+}
+
 export function caseActivityTimestamp(item) {
   for (const value of [item.updatedAt, item.dateSubmitted, item.createdAt]) {
     if (!value) continue;
