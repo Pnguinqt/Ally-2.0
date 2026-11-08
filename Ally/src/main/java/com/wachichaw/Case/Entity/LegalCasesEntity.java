@@ -16,19 +16,6 @@ import jakarta.persistence.*;
 @Table(name = "Cases")
 public class LegalCasesEntity {
 
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private String documentPinHash;
-
-    @Transient
-    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-    private String generatedDocumentPin;
-
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public String getDocumentPinHash() { return documentPinHash; }
-    public void setDocumentPinHash(String hash) { documentPinHash = hash; }
-    public String getGeneratedDocumentPin() { return generatedDocumentPin; }
-    public void setGeneratedDocumentPin(String pin) { generatedDocumentPin = pin; }
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "case_id")

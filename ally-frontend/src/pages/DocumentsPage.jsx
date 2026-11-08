@@ -361,6 +361,7 @@ const DocumentsPage = () => {
 
         {/* Case Document Manager Component */}
         <CaseDocumentManager
+          key={caseId}
           caseId={parseInt(caseId)}
           caseInfo={caseInfo}
           userRole={userRole}

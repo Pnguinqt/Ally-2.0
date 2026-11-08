@@ -7,7 +7,7 @@ The backend changes must be deployed before the browser can use them. No Render 
 - There were two global CORS processing paths (a servlet filter and Spring Security), plus controller-level wildcard/local-only annotations. PATCH was missing. The old defaults already included Vercel; missing CORS headers can also mean Render returned a proxy response or the Java process never responded.
 - Read-only production preflight probes timed out after 25 and 55 seconds with no HTTP response. This does not prove an OOM, restart, or a particular provider failure. Inspect Render events and runtime logs around the failed request for process exit codes, memory exhaustion, startup errors, database connection failures and deployment restarts.
 - RAG defaulted to localhost, which on Render means the Render container, not a developer laptop. Its shared HTTP client could wait 30 seconds per connection/read; the RAG timeout property was not used by that client.
-- OTP delivery uses the MailerSend HTTPS API, not JavaMail/SMTP. SMTP settings could not fix that call. The old sender was hardcoded and delivery had no application-configured transport deadline.
+- OTP delivery uses the Brevo HTTPS API with a configured API key and sender address.
 - The frontend already reset submitting in finally, but an unresolved fetch could keep it waiting. It also mislabeled any error mentioning email as a duplicate address.
 - SQL initialization references users; schema.sql must run after Hibernate creates mapped tables on a fresh database. Database credentials and connectivity remain deployment requirements.
 
@@ -20,16 +20,16 @@ Required for database-backed registration:
 | DB_URL                | Reachable MySQL JDBC connection URL, with the database provider's required TLS options |
 | DB_USERNAME           | Database username                                                                      |
 | DB_PASSWORD           | Database password (secret)                                                             |
-| MAILERSEND_API_KEY    | MailerSend API token with sending permission (secret)                                  |
-| MAILERSEND_FROM_EMAIL | Sender on your verified MailerSend domain                                              |
-| MAILERSEND_FROM_NAME  | Sender display name; defaults to Ally Team                                             |
+| BREVO_API_KEY        | Brevo API key with transactional email sending permission (secret)                     |
+| BREVO_FROM_EMAIL     | Sender email registered and verified in Brevo                                          |
+| BREVO_FROM_NAME      | Sender display name (defaults to Ally Team)                                            |
 | FRONTEND_URL          | https://ally-legalservices.vercel.app                                                  |
 | LOCAL_DEV             | false; also enable email verification in ALLY system settings                          |
 | RAG_ENABLED           | false until FastAPI is publicly reachable                                              |
 
 Optional settings:
 
-- MAILERSEND_TIMEOUT_MS defaults to 15000; email connect timeout is 5000 ms.
+- BREVO_TIMEOUT_MS defaults to 15000 (milliseconds). Email connect timeout is 5000 ms.
 - RAG_SERVICE_URL: set to the deployed FastAPI URL only when it exists. For laptop development set RAG_ENABLED=true and the correct local URL/port.
 - RAG_SERVICE_TIMEOUT defaults to 10000; RAG_HEALTH_TIMEOUT defaults to 2000 (milliseconds). The health probe has bounded connect/read waits.
 - DEEPSEEK_API_KEY is required for AI replies, not registration. DEEPSEEK_BASE_URL and DEEPSEEK_MODEL retain their existing defaults.
@@ -37,9 +37,9 @@ Optional settings:
 - STORAGE_TYPE defaults to local. Firebase uploads require STORAGE_TYPE=firebase, FIREBASE_KEY_PATH pointing to the mounted secret file, and FIREBASE_STORAGE_BUCKET. Local upload storage needs a persistent disk if files must survive redeploys.
 - Self-pinging is disabled by default. If explicitly enabled with ALLY_KEEP_ALIVE_ENABLED=true, set BACKEND_URL=https://ally-backend-yspl.onrender.com. Calls have 5-second connect/read limits.
 
-SMTP_DOMAIN_ID and SMTP settings are not used for OTP delivery. CORS_ALLOWED_ORIGIN_PATTERNS is no longer used: SecurityConfig explicitly allows only the requested production origin and http://localhost:5173. No wildcard origins are allowed.
+CORS_ALLOWED_ORIGIN_PATTERNS is no longer used: SecurityConfig explicitly allows only the requested production origin and http://localhost:5173. No wildcard origins are allowed.
 
-MailerSend sender requirements and request format: https://developers.mailersend.com/api/v1/email
+For local OTP delivery, set `BREVO_API_KEY` and `BREVO_FROM_EMAIL` in `Ally/.env` and restart the backend. If a code request returns 503, check for `BREVO_DELIVERY_FAILED` in the backend logs. The log reports whether the key and sender are configured and the provider's HTTP status when available. [Brevo transactional email setup](https://developers.brevo.com/docs/send-a-transactional-email)
 
 ## Vercel
 
@@ -76,8 +76,8 @@ From Ally run Maven with -Dtest=DeploymentWebTest,ExternalServiceTest,Registrati
 - Ally/src/main/java/com/wachichaw/User/Service/UserService.java: clean pending OTP state after delivery failure; remove client OTP debug output.
 - Ally/src/main/java/com/wachichaw/User/Controller/UserController.java: controlled registration responses for email, database and other errors; success returns email/verified only, never a password-bearing entity.
 - Ally/src/main/java/com/wachichaw/Config/KeepAliveConfig.java: make self-ping opt-in, use BACKEND_URL and bounded timeouts.
-- Ally/src/main/resources/application.properties: wire RAG and MailerSend variables, remove obsolete SMTP/CORS-pattern settings, bound database connections and defer SQL initialization until Hibernate creates tables. Preserve the existing password-default removal.
-- Ally/.env.example: nonsecret local RAG and MailerSend configuration examples.
+- Ally/src/main/resources/application.properties: wire RAG and Brevo variables, remove obsolete SMTP/CORS-pattern settings, bound database connections and defer SQL initialization until Hibernate creates tables. Preserve the existing password-default removal.
+- Ally/.env.example: nonsecret local RAG and Brevo configuration examples.
 - ally-frontend/src/components/ClientRegistrationForm.jsx: duplicate-submit guard, 60-second abort timeout, clear timer/loading in finally, separate duplicate-account errors from email-delivery errors.
 - Ally/src/test/java/com/wachichaw/Deployment/DeploymentWebTest.java, ExternalServiceTest.java, RegistrationCleanupTest.java: deployment regression tests.
 - docs/deployment-troubleshooting.md: this deployment runbook.

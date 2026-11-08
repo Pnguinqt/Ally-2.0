@@ -7,14 +7,18 @@ import DocumentsPage from './DocumentsPage';
 import { LawyerDirectoryPage } from './LawyerDirectoryPage';
 import AppointmentsPage from './AppointmentsPage';
 import AccountSettings from '../components/AccountSettings';
-import SidePanel from '../components/shared/SidePanel';
 import { SidebarProvider } from '../contexts/SidebarContext';
 import { DemoContext } from '../demo/DemoContext';
 import { createDemoRuntime } from '../demo/demoRuntime';
 import { DEMO_KEY, demoReducer, quests, questUnlocked, readDemoSession } from '../demo/demoState';
 import { deleteDemoFile } from '../demo/demoService';
 import QuestHints from '../demo/QuestHints';
+import QuestQuestion from '../demo/QuestQuestion';
 import QuestWindow from '../demo/QuestWindow';
+import RespondentIntro from '../demo/RespondentIntro';
+
+const requiredQuests = quests.filter(quest => !quest.optional);
+const optionalQuests = quests.filter(quest => quest.optional);
 
 function DemoChatRedirect() {
   const { search } = useLocation();
@@ -31,6 +35,7 @@ function DemoMyCasesRedirect() {
 export default function RespondentDemoPage() {
   const [state, setState] = useState(readDemoSession);
   const stateRef = useRef(state);
+  const questProgress = useRef(null);
   const dispatch = useCallback(action => {
     const next = demoReducer(stateRef.current, action);
     stateRef.current = next;
@@ -41,7 +46,12 @@ export default function RespondentDemoPage() {
   const [confirmReset, setConfirmReset] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const complete = quests.every(quest => state.completed.includes(quest.id));
+  const requiredDone = requiredQuests.filter(quest => state.completed.includes(quest.id)).length;
+  const optionalDone = optionalQuests.filter(quest => state.completed.includes(quest.id)).length;
+  const nextQuest = requiredQuests.find(quest => !state.completed.includes(quest.id) && questUnlocked(state, quest.id));
+  const pendingQuestion = requiredQuests.find(quest => state.pendingQuestions.includes(quest.id))
+    || optionalQuests.find(quest => state.pendingQuestions.includes(quest.id));
+  const complete = requiredDone === requiredQuests.length;
 
   useEffect(() => {
     try { sessionStorage.setItem(DEMO_KEY, JSON.stringify(state)); }
@@ -62,15 +72,26 @@ export default function RespondentDemoPage() {
     }
   }, [showQuests]);
 
-  const goToQuest = quest => navigate(quest.path);
+  const goToQuest = quest => {
+    if (quest.id !== 'chat' && quest.id !== 'case-search') {
+      window.dispatchEvent(new Event('close-ai-chat'));
+      if (window.matchMedia('(max-width: 1023px)').matches) setShowQuests(false);
+    }
+    navigate(state.completed.includes(quest.id) && quest.revisitPath ? quest.revisitPath : quest.path);
+  };
   const reset = async () => {
     if (state.busy) return;
     try {
       await deleteDemoFile(state.id);
       dispatch({ type: 'reset' });
-      setConfirmReset(false); setShowQuests(false); setError(''); navigate('/demo/chat');
+      setConfirmReset(false); setShowQuests(false); setError(''); navigate('/demo', { replace: true });
     } catch (error) { setError(error.message); }
   };
+
+  if (!state.started) return <RespondentIntro onStart={() => {
+    dispatch({ type: 'start' });
+    navigate('/demo/chat?mode=normal', { replace: true });
+  }} />;
 
   return <DemoContext.Provider value={runtime}>
     <SidebarProvider key={state.id} persist={false}>
@@ -97,43 +118,56 @@ export default function RespondentDemoPage() {
         </Routes>
       </PageLayout>
 
-      {!state.started && <SidePanel title="Respondent demo" description="Test ALLY using a ready-to-use practice account." onClose={() => { dispatch({ type: 'start' }); navigate('/demo/chat?mode=normal'); }}>
-        <div className="space-y-5 overflow-y-auto p-6 text-sm leading-7 text-gray-600" data-no-translate>
-          <p>You’ll use the same sidebar, chatbot, case form, and workspace as the main app. Open <strong>Ask ALLY</strong> at the bottom-right to chat, or the <strong>Quests</strong> bar at the bottom-left for directions. Each quest has a <strong>Hint</strong> button with optional guidance and examples.</p>
-          <ol className="list-decimal space-y-3 pl-5">{quests.map(quest => <li key={quest.id}>{quest.title}</li>)}</ol>
-          <p className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-blue-900">Use fictional case details. Lawyer acceptance, hearings, appointments, and messages are simulated. AI replies and PDF summaries use the live services.</p>
-          <p>Your supplied PDF is available in the actual document upload screen. Progress stays in this tab; use Reset before the next respondent.</p>
-          <button className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-3 font-medium text-white hover:bg-blue-700" onClick={() => { dispatch({ type: 'start' }); navigate('/demo/chat?mode=normal'); }}>Enter demo account <ArrowRight className="h-4 w-4" /></button>
-        </div>
-      </SidePanel>}
-
-      {state.started && <button type="button" onClick={() => setShowQuests(open => !open)}
-        aria-label={showQuests ? 'Close quest window' : 'Open quest window'} aria-expanded={showQuests} aria-controls="demo-quest-window"
+      <button type="button" onClick={() => setShowQuests(open => !open)}
+        aria-label={showQuests ? 'Close quest window' : 'Open quest window'} aria-describedby="demo-quest-status"
+        aria-expanded={showQuests} aria-controls="demo-quest-window"
         className="fixed bottom-4 left-4 z-[55] inline-flex max-w-[calc(100vw-11rem)] items-center gap-1.5 rounded-xl border border-blue-200 bg-white px-2.5 py-3 text-xs font-semibold text-blue-800 shadow-lg hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 sm:gap-2 sm:px-3 sm:text-sm" data-no-translate>
-        <ClipboardList className="h-4 w-4 shrink-0" aria-hidden="true" /><span className="whitespace-nowrap">Quests {state.completed.length}/{quests.length}</span>
-        <progress value={state.completed.length} max={quests.length} aria-label="Quest completion" className="hidden h-1.5 w-24 accent-blue-600 sm:block" />
+        <ClipboardList className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span id="demo-quest-status" aria-live="polite" className="whitespace-nowrap">
+          {pendingQuestion ? `${state.pendingQuestions.length} to answer` : `Quests ${requiredDone}/${requiredQuests.length}`}
+        </span>
+        <progress value={requiredDone} max={requiredQuests.length} aria-label="Required quest completion" className="hidden h-1.5 w-24 accent-blue-600 sm:block" />
         {showQuests ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronUp className="h-4 w-4" aria-hidden="true" />}
-      </button>}
+      </button>
 
-      {state.started && <QuestWindow open={showQuests} onClose={() => setShowQuests(false)}>
+      <QuestWindow open={showQuests} onClose={() => setShowQuests(false)}>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4" data-no-translate>
-          <div><p className="mb-2 text-sm font-semibold text-gray-800">{state.completed.length} of {quests.length} complete</p><progress value={state.completed.length} max={quests.length} aria-label="Demo quest progress" className="h-2 w-full accent-blue-600" /></div>
+          <div>
+            <p ref={questProgress} role="status" tabIndex={-1} className="mb-2 text-sm font-semibold text-gray-800">{requiredDone} of {requiredQuests.length} required · {optionalDone} of {optionalQuests.length} optional complete</p>
+            <progress value={requiredDone} max={requiredQuests.length} aria-label="Required demo quest progress" className="h-2 w-full accent-blue-600" />
+            {pendingQuestion && <button type="button" onClick={() => document.getElementById(`quest-question-${pendingQuestion.id}`)?.focus()}
+              className="mt-3 flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-left text-sm font-medium text-white hover:bg-blue-700">
+              Answer question: {pendingQuestion.title}<ArrowRight className="h-4 w-4 shrink-0" />
+            </button>}
+            {nextQuest && !state.pendingQuestions.includes(nextQuest.id) && <button type="button" onClick={() => goToQuest(nextQuest)} className="mt-3 flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-left text-sm font-medium text-white hover:bg-blue-700">
+              Next: {nextQuest.title}<ArrowRight className="h-4 w-4 shrink-0" />
+            </button>}
+          </div>
+          {complete && <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-900"><h3 className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-5 w-5" />Ready for your survey</h3><p className="mt-2 text-sm leading-6">You’ve completed the required quests. Return to the survey provided by the research team.</p></div>}
           {quests.map((quest, index) => {
-            const done = state.completed.includes(quest.id); const unlocked = questUnlocked(state, index);
+            const done = state.completed.includes(quest.id);
+            const awaitingAnswer = state.pendingQuestions.includes(quest.id);
+            const unlocked = done || questUnlocked(state, index);
             return <article key={quest.id} className={`flex gap-3 rounded-lg border p-3 ${done ? 'border-green-200 bg-green-50' : unlocked ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-white'}`}>
               <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs ${done ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{done ? <Check className="h-4 w-4" /> : unlocked ? index + 1 : <LockKeyhole className="h-3.5 w-3.5" />}</span>
-              <div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-gray-900">{quest.title}</h3><p className="mt-2 text-xs leading-6 text-gray-600">{quest.detail}</p><button disabled={!unlocked} onClick={() => goToQuest(quest)} className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:underline disabled:cursor-not-allowed disabled:text-gray-400">{done ? 'Revisit' : quest.action}<ArrowRight className="h-4 w-4" /></button>
+              <div className="min-w-0 flex-1"><h3 className="text-sm font-semibold text-gray-900">{quest.title}</h3>{quest.optional && <span className="text-xs font-medium text-gray-600">Optional</span>}<p className="mt-2 text-xs leading-6 text-gray-600">{quest.detail}</p>
+                {awaitingAnswer
+                  ? <QuestQuestion quest={quest} onAnswer={answer => {
+                    dispatch({ type: 'answer-question', questId: quest.id, answer });
+                    questProgress.current?.focus();
+                  }} />
+                  : <button disabled={!unlocked} onClick={() => goToQuest(quest)} className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:underline disabled:cursor-not-allowed disabled:text-gray-400">{done ? 'Revisit' : quest.action}<ArrowRight className="h-4 w-4" /></button>}
+                {state.answers[quest.id] && <p className="mt-2 text-xs text-gray-600">Your answer: {state.answers[quest.id]}</p>}
                 <QuestHints quest={quest} revealed={state.hints?.[quest.id]} onReveal={() => dispatch({ type: 'reveal-hint', questId: quest.id })} />
               </div>
             </article>;
           })}
-          {complete && <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-green-900"><h3 className="flex items-center gap-2 font-semibold"><CheckCircle2 className="h-5 w-5" />Ready for your survey</h3><p className="mt-2 text-sm leading-6">You’ve completed every task. Return to the survey provided by the research team.</p></div>}
           <div className="border-t border-gray-200 pt-5">
             {!confirmReset ? <button disabled={Boolean(state.busy)} onClick={() => setConfirmReset(true)} className="inline-flex items-center gap-2 text-sm text-gray-600 disabled:opacity-50"><RotateCcw className="h-4 w-4" />Reset for next respondent</button>
-              : <div><p className="mb-3 text-sm text-gray-700">Clear this demo’s chat, case, notes, PDF, messages, and appointments?</p><div className="flex gap-4"><button disabled={Boolean(state.busy)} onClick={reset} className="rounded-md bg-red-600 px-3 py-2 text-sm text-white disabled:opacity-50">Clear demo</button><button onClick={() => setConfirmReset(false)} className="text-sm text-gray-600">Cancel</button></div></div>}
+              : <div><p className="mb-3 text-sm text-gray-700">Clear this demo’s activity, quest answers, and uploaded PDF?</p><div className="flex gap-4"><button disabled={Boolean(state.busy)} onClick={reset} className="rounded-md bg-red-600 px-3 py-2 text-sm text-white disabled:opacity-50">Clear demo</button><button onClick={() => setConfirmReset(false)} className="text-sm text-gray-600">Cancel</button></div></div>}
           </div>
         </div>
-      </QuestWindow>}
+      </QuestWindow>
     </SidebarProvider>
   </DemoContext.Provider>;
 }

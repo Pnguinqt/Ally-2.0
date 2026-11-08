@@ -3,52 +3,54 @@ import { getAuthData } from '../utils/auth.jsx';
 
 const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}/api/documents`;
 
-export const documentService = {
-  previewDocument: async (documentId, pin, signal) => {
-    const auth = getAuthData();
-    if (!auth) throw new Error('Please log in again.');
-    const response = await fetch(`${API_BASE_URL}/${documentId}/preview`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin }), signal, cache: 'no-store',
+async function documentCodeRequest(path, { method = 'POST', otp, signal, fallback } = {}) {
+  const auth = getAuthData();
+  if (!auth) throw new Error('Please log in again.');
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${auth.token}`,
+      ...(otp === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: otp === undefined ? undefined : JSON.stringify({ otp }),
+    signal,
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw Object.assign(new Error(body.message || fallback || 'Could not complete document verification.'), {
+      status: response.status,
     });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Unable to preview document. Check the case PIN.');
-    }
+  }
+  return response;
+}
+
+export const documentService = {
+  previewDocument: async (documentId, otp, signal) => {
+    const response = await documentCodeRequest(`/${documentId}/preview`, {
+      otp, signal, fallback: 'Unable to preview the document.',
+    });
     return response.blob();
   },
-  verifyPreviewPin: async (caseId, pin, signal) => {
-    const auth = getAuthData();
-    if (!auth) throw new Error('Please log in again.');
-    const response = await fetch(`${API_BASE_URL}/case/${caseId}/pin/verify`, {
-      method: 'POST', headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin }), signal, cache: 'no-store',
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || 'Unable to preview file. Check the case PIN.');
-    }
+  verifyLocalPreviewCode: async (caseId, otp, signal) => {
+    await documentCodeRequest(`/case/${caseId}/otp/local-preview/verify`, { otp, signal });
   },
-  setupPin: async (caseId) => {
-    const auth = getAuthData();
-    const response = await fetch(`${API_BASE_URL}/case/${caseId}/pin/setup`, {
-      method: 'POST', headers: { Authorization: `Bearer ${auth.token}` },
-    });
-    if (!response.ok) throw new Error('Only the assigned lawyer can set up a PIN for an accepted case that has no PIN.');
+  requestWorkspaceCode: async (caseId, signal) => {
+    await documentCodeRequest(`/case/${caseId}/otp/request`, { signal });
+  },
+  requestFileCode: async (caseId, document, signal) => {
+    const operation = document.downloadRequested ? 'download' : 'preview';
+    const path = document.localFile
+      ? `/case/${caseId}/otp/local-preview/request`
+      : `/${document.documentId}/${operation}/otp`;
+    await documentCodeRequest(path, { signal });
+  },
+  workspaceAccess: async (caseId, signal) => {
+    const response = await documentCodeRequest(`/case/${caseId}/otp`, { method: 'GET', signal });
     return response.json();
   },
-  pinAccess: async (caseId, pin) => {
-    const auth = getAuthData();
-    const response = await fetch(`${API_BASE_URL}/case/${caseId}/pin`, {
-      method: pin === undefined ? 'GET' : 'POST',
-      headers: { Authorization: `Bearer ${auth.token}`, 'Content-Type': 'application/json' },
-      ...(pin === undefined ? {} : { body: JSON.stringify({ pin }) }),
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message || (response.status === 429 ? 'Too many attempts. Try again in 15 minutes.' : 'Unable to unlock documents. Check the four-digit PIN.'));
-    }
+  unlockWorkspace: async (caseId, otp, signal) => {
+    const response = await documentCodeRequest(`/case/${caseId}/otp/verify`, { otp, signal });
     return response.json();
   },
   // Get documents for a specific case
@@ -211,43 +213,21 @@ export const documentService = {
   },
 
   // Download a document
-  downloadDocument: async (documentId, documentName, pin, signal) => {
-    try {
-      const authData = getAuthData();
-      if (!authData) {
-        throw new Error('Not authenticated');
-      }
-
-      const response = await fetch(`${API_BASE_URL}/${documentId}/download`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authData.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ pin }), signal, cache: 'no-store',
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message || 'Unable to download file. Check the case PIN.');
-      }
-
-      const blob = await response.blob();
-      if (signal?.aborted) return false;
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = documentName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-      
-      return true;
-    } catch (error) {
-      console.error('Error downloading document:', error);
-      throw error;
-    }
+  downloadDocument: async (documentId, documentName, otp, signal) => {
+    const response = await documentCodeRequest(`/${documentId}/download`, {
+      otp, signal, fallback: 'Unable to download the document.',
+    });
+    const blob = await response.blob();
+    if (signal?.aborted) return false;
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = documentName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    return true;
   },
 
   // Generate an on-demand AI summary for a document the user can access

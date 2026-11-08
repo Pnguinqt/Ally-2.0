@@ -9,14 +9,57 @@ import FilePreview from './FilePreview.jsx';
 import MarkdownText from './shared/MarkdownText.jsx';
 import SidePanel from './shared/SidePanel.jsx';
 
+const EMPTY_CHALLENGE = { sent: false, busy: false, error: '' };
+
+function DocumentCodeForm({ challenge, onSend, onVerify, submitLabel, demo }) {
+  const [code, setCode] = useState('');
+  const inputId = React.useId();
+
+  return (
+    <form className="space-y-4" onSubmit={event => {
+      event.preventDefault();
+      if (!challenge.busy && challenge.sent && code.length === 6) {
+        onVerify(code);
+        setCode('');
+      }
+    }}>
+      <p className="text-sm text-gray-600" aria-live="polite">
+        {demo
+          ? challenge.sent
+            ? <>Practice code <strong className="tracking-widest">{challenge.code}</strong>. It expires in five minutes.</>
+            : 'Request a six-digit practice code to display it here.'
+          : challenge.sent
+          ? 'Code sent to your registered email. It expires five minutes after it was requested.'
+          : 'Get a six-digit code at your registered email.'}
+      </p>
+      {challenge.sent && (
+        <>
+          <label htmlFor={inputId} className="block text-sm font-medium">{demo ? 'Practice code' : 'Email code'}</label>
+          <input id={inputId} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}"
+            maxLength={6} required value={code} onChange={event => setCode(event.target.value.replace(/[^0-9]/g, ''))}
+            className="w-full rounded-lg border p-3 text-center text-2xl tracking-widest" />
+          <button disabled={challenge.busy || code.length !== 6}
+            className="w-full rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{submitLabel}</button>
+        </>
+      )}
+      {challenge.error && <p role="alert" className="text-sm text-red-600">{challenge.error}</p>}
+      <button type="button" disabled={challenge.busy} onClick={() => {
+        setCode('');
+        onSend();
+      }} className="rounded-lg px-3 py-2 font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+        {challenge.sent ? 'Resend code' : 'Send code'}
+      </button>
+      {challenge.busy && <p role="status" className="text-sm text-gray-600">Please wait…</p>}
+    </form>
+  );
+}
+
 const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) => {
   const demo = useDemoRuntime();
   const documentService = demo?.documentService || productionDocumentService;
-  const [pinAccess, setPinAccess] = useState(null);
-  const [pin, setPin] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [unlocking, setUnlocking] = useState(false);
-  const [newPin, setNewPin] = useState(null);
+  const [workspaceAccess, setWorkspaceAccess] = useState(null);
+  const [workspaceChallenge, setWorkspaceChallenge] = useState(EMPTY_CHALLENGE);
+  const workspaceRequest = useRef(null);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -27,9 +70,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
   const [documentContent, setDocumentContent] = useState(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [photoPin, setPhotoPin] = useState('');
-  const [photoPinError, setPhotoPinError] = useState('');
+  const [fileChallenge, setFileChallenge] = useState(EMPTY_CHALLENGE);
   const photoRequest = useRef(null);
   const photoUrl = useRef(null);
 
@@ -38,15 +79,14 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
     photoRequest.current = null;
     if (photoUrl.current) URL.revokeObjectURL(photoUrl.current);
     photoUrl.current = null;
-    setPhotoPin('');
-    setPhotoPinError('');
+    setFileChallenge(EMPTY_CHALLENGE);
   }, []);
 
   useEffect(() => () => clearPhotoPreview(), [caseId, clearPhotoPreview]);
   const [summaryDocument, setSummaryDocument] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState('');
-  const [documentSummaries, setDocumentSummaries] = useState(() => demo?.getSummary() ? { [demo.getDocumentId()]: demo.getSummary() } : {});
+  const [documentSummaries, setDocumentSummaries] = useState({});
   
   // Inline File List State
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -68,33 +108,37 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
 
   // Load case documents on mount and when caseId changes
   useEffect(() => {
-    if (caseId && (demo || pinAccess?.caseId === caseId && pinAccess?.unlocked)) {
+    if (caseId && workspaceAccess?.caseId === caseId && workspaceAccess.unlocked) {
+      const summary = demo?.getSummary();
+      if (summary) setDocumentSummaries({ [demo.getDocumentId()]: summary });
       loadCaseDocuments();
     }
-  }, [caseId, loadCaseDocuments, demo, pinAccess]);
+  }, [caseId, demo, loadCaseDocuments, workspaceAccess]);
 
   useEffect(() => {
-    let active = true;
-    setPinAccess(null);
-    setPin('');
-    setNewPin(null);
-    setPinError('');
+    const controller = new AbortController();
+    workspaceRequest.current = controller;
+    setWorkspaceAccess(null);
+    setWorkspaceChallenge(EMPTY_CHALLENGE);
     setDocuments([]);
     setSelectedFiles([]);
     setShowFilePreview(false);
     setPreviewingFile(null);
     setShowDocumentViewer(false);
     setDocumentSummaries({});
-    if (!demo && caseId) documentService.pinAccess(caseId).then(access => {
-      if (active) setPinAccess({ ...access, caseId });
-    }).catch(error => { if (active) setPinError(error.message); });
-    return () => { active = false; };
+    if (caseId) documentService.workspaceAccess(caseId, controller.signal).then(access => {
+      if (!controller.signal.aborted && access.unlocked) setWorkspaceAccess({ ...access, caseId });
+    }).catch(error => {
+      if (!controller.signal.aborted) setWorkspaceChallenge(current => ({ ...current, error: error.message }));
+    });
+    return () => controller.abort();
   }, [caseId, documentService, demo]);
 
   useEffect(() => {
-    if (demo || !pinAccess?.unlocked) return;
+    if (!workspaceAccess?.unlocked) return;
     const timeout = setTimeout(() => {
-      setPinAccess(current => ({ ...current, unlocked: false }));
+      setWorkspaceAccess(null);
+      setWorkspaceChallenge(EMPTY_CHALLENGE);
       setDocuments([]);
       setDocumentSummaries({});
       setShowDocumentViewer(false);
@@ -104,31 +148,33 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
       setSelectedFiles([]);
       setShowFilePreview(false);
       setPreviewingFile(null);
-    }, Math.max(0, pinAccess.expiresAt - Date.now()));
+    }, Math.max(0, workspaceAccess.expiresAt - Date.now()));
     return () => clearTimeout(timeout);
-  }, [pinAccess, demo, clearPhotoPreview]);
+  }, [workspaceAccess, clearPhotoPreview]);
 
-  const setupExistingPin = async () => {
-    setUnlocking(true);
-    setPinError('');
+  const requestWorkspaceCode = async () => {
+    const signal = workspaceRequest.current.signal;
+    setWorkspaceChallenge(current => ({ ...current, busy: true, error: '' }));
     try {
-      const result = await documentService.setupPin(caseId);
-      setNewPin(result.pin);
-      setPinAccess({ caseId, configured: true, unlocked: false });
-    } catch (error) { setPinError(error.message); }
-    finally { setUnlocking(false); }
+      const result = await documentService.requestWorkspaceCode(caseId, signal);
+      if (!signal.aborted) setWorkspaceChallenge({ sent: true, code: result?.code, busy: false, error: '' });
+    } catch (error) {
+      if (!signal.aborted) setWorkspaceChallenge(current => ({ ...current, busy: false, error: error.message }));
+    }
   };
 
-  const unlockDocuments = async (event) => {
-    event.preventDefault();
-    setUnlocking(true);
-    setPinError('');
+  const unlockDocuments = async (code) => {
+    const signal = workspaceRequest.current.signal;
+    setWorkspaceChallenge(current => ({ ...current, busy: true, error: '' }));
     try {
-      const access = await documentService.pinAccess(caseId, pin);
-      setPinAccess({ ...access, caseId });
-      setPin('');
-    } catch (error) { setPinError(error.message); }
-    finally { setUnlocking(false); }
+      const access = await documentService.unlockWorkspace(caseId, code, signal);
+      if (!signal.aborted) {
+        setWorkspaceAccess({ ...access, caseId });
+        setWorkspaceChallenge(EMPTY_CHALLENGE);
+      }
+    } catch (error) {
+      if (!signal.aborted) setWorkspaceChallenge(current => ({ ...current, sent: error.status !== 410, busy: false, error: error.message }));
+    }
   };
 
   // Clean up invalid files on component mount/case change
@@ -343,12 +389,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
   const previewSelectedFile = (fileWithMeta) => {
     // Use the original File object for preview, or fallback to fileWithMeta if it's already a File
     const originalFile = fileWithMeta.file || fileWithMeta;
-    if (!demo) {
-      handlePreviewDocument({ documentName: originalFile.name, documentType: originalFile.name.split('.').pop(), localFile: originalFile });
-      return;
-    }
-    setPreviewingFile(originalFile);
-    setShowFilePreview(true);
+    handlePreviewDocument({ documentName: originalFile.name, localFile: originalFile });
   };
 
   // Close file preview
@@ -381,46 +422,17 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
   };
 
   // Download document
-  const handleDownloadDocument = async (documentId, documentName) => {
-    if (!demo) {
-      handlePreviewDocument({ ...(documents.find(item => item.documentId === documentId) || { documentId, documentName }), downloadRequested: true });
-      return;
-    }
-    try {
-      await documentService.downloadDocument(documentId, documentName);
-      toast.success('Download started successfully');
-    } catch (error) {
-      console.error('Error downloading document:', error);
-      toast.error(error.message || 'An unexpected error occurred while downloading the document');
-    }
+  const handleDownloadDocument = (document) => {
+    handlePreviewDocument({ ...document, downloadRequested: true });
   };
 
   // Handle document preview
-  const handlePreviewDocument = async (document) => {
+  const handlePreviewDocument = (document) => {
     clearPhotoPreview();
     setSelectedDocument(document);
     setShowDocumentViewer(true);
-    setDocumentContent(null);
-    if (!demo) {
-      setDocumentContent({ type: document.downloadRequested ? 'locked-download' : 'locked-preview' });
-      setLoadingPreview(false);
-      return;
-    }
-    setLoadingPreview(true);
-    
-    try {
-      if (demo) {
-        const file = await documentService.getDocumentFile();
-        setDocumentContent({ type: 'pdf', url: URL.createObjectURL(file) });
-        return;
-      }
-    } catch (error) {
-      console.error('Error loading document preview:', error);
-      toast.error('Failed to load document preview');
-      setDocumentContent({ type: 'error', message: error.message });
-    } finally {
-      setLoadingPreview(false);
-    }
+    setDocumentContent({ type: document.downloadRequested ? 'locked-download' : 'locked-preview' });
+    requestFileCode(document);
   };
 
   const handleCloseViewer = () => {
@@ -428,32 +440,36 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
     setShowDocumentViewer(false);
     setSelectedDocument(null);
     setDocumentContent(null);
-    setLoadingPreview(false);
-    
-    // Clean up any object URLs to prevent memory leaks
-    if (documentContent && documentContent.url) {
-      URL.revokeObjectURL(documentContent.url);
-    }
   };
 
-  const unlockPhotoPreview = async (event) => {
-    event.preventDefault();
-    if (loadingPreview || photoPin.length !== 4) return;
+  const requestFileCode = async (document) => {
     photoRequest.current?.abort();
     const controller = new AbortController();
     photoRequest.current = controller;
-    setLoadingPreview(true);
-    setPhotoPinError('');
+    setFileChallenge(current => ({ ...current, busy: true, error: '' }));
+    try {
+      const result = await documentService.requestFileCode(caseId, document, controller.signal);
+      if (!controller.signal.aborted) setFileChallenge({ sent: true, code: result?.code, busy: false, error: '' });
+    } catch (error) {
+      if (!controller.signal.aborted) setFileChallenge(current => ({ ...current, busy: false, error: error.message }));
+    }
+  };
+
+  const unlockFile = async (code) => {
+    photoRequest.current?.abort();
+    const controller = new AbortController();
+    photoRequest.current = controller;
+    setFileChallenge(current => ({ ...current, busy: true, error: '' }));
     try {
       if (selectedDocument.downloadRequested) {
-        const downloaded = await documentService.downloadDocument(selectedDocument.documentId, selectedDocument.documentName, photoPin, controller.signal);
+        const downloaded = await documentService.downloadDocument(selectedDocument.documentId, selectedDocument.documentName, code, controller.signal);
         if (controller.signal.aborted || !downloaded) return;
         toast.success('Download started successfully');
         handleCloseViewer();
         return;
       }
       if (selectedDocument.localFile) {
-        await documentService.verifyPreviewPin(caseId, photoPin, controller.signal);
+        await documentService.verifyLocalPreviewCode(caseId, code, controller.signal);
         if (controller.signal.aborted) return;
         setPreviewingFile(selectedDocument.localFile);
         setShowFilePreview(true);
@@ -462,7 +478,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
         setDocumentContent(null);
         return;
       }
-      const blob = await documentService.previewDocument(selectedDocument.documentId, photoPin, controller.signal);
+      const blob = await documentService.previewDocument(selectedDocument.documentId, code, controller.signal);
       if (controller.signal.aborted) return;
       const fileType = selectedDocument.documentType?.toLowerCase();
       if (['txt', 'md'].includes(fileType)) {
@@ -476,11 +492,10 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
         setDocumentContent({ type: 'unsupported' });
       }
     } catch (error) {
-      if (!controller.signal.aborted) setPhotoPinError(error.message);
+      if (!controller.signal.aborted) setFileChallenge(current => ({ ...current, sent: error.status !== 410, busy: false, error: error.message }));
     } finally {
       if (!controller.signal.aborted) {
-        setPhotoPin('');
-        setLoadingPreview(false);
+        setFileChallenge(current => ({ ...current, busy: false }));
       }
     }
   };
@@ -516,23 +531,14 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
   // Get unique file types for filter
   const uniqueTypes = [...new Set(documents.map(doc => doc.documentType))];
 
-  if (!demo && (!pinAccess?.unlocked || pinAccess.caseId !== caseId)) {
+  if (!workspaceAccess?.unlocked || workspaceAccess.caseId !== caseId) {
     return (
       <section className="mx-auto max-w-md rounded-xl border bg-white p-8 text-center">
         <FileText className="mx-auto mb-4 h-10 w-10 text-blue-600" />
         <h2 className="text-xl font-semibold">Documents are locked</h2>
-        {newPin && <div className="my-4 rounded-lg bg-blue-50 p-4" role="alert"><p>Save this PIN and share it with your client. It is shown once.</p><p className="my-3 font-mono text-3xl tracking-widest">{newPin}</p><button className="underline" onClick={() => setNewPin(null)}>I saved the PIN</button></div>}
-        <p className="my-3 text-sm text-gray-600">Enter the four-digit case PIN shared by your lawyer to view, upload, download, or delete documents. Access lasts 15 minutes.</p>
-        {pinAccess && !pinAccess.configured ? (
-          <div><p className="text-sm text-amber-700">A PIN is generated when the lawyer accepts the case. Cases accepted before this feature need a one-time setup by the assigned lawyer.</p>{userRole === 'LAWYER' && <button disabled={unlocking} className="mt-4 rounded-lg bg-blue-600 p-3 text-white" onClick={setupExistingPin}>Set up document PIN</button>}</div>
-        ) : (
-          <form onSubmit={unlockDocuments} className="space-y-4">
-            <label className="block text-sm font-medium" htmlFor="document-pin">Case document PIN</label>
-            <input id="document-pin" type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{4}" maxLength={4} minLength={4} required value={pin} onChange={event => setPin(event.target.value.replace(/[^0-9]/g, ''))} className="w-full rounded-lg border p-3 text-center text-2xl tracking-widest" />
-            <button disabled={unlocking || pin.length !== 4} className="w-full rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{unlocking ? 'Unlocking…' : 'Unlock documents'}</button>
-          </form>
-        )}
-        {pinError && <p role="alert" className="mt-3 text-sm text-red-600">{pinError}</p>}
+        <p className="my-3 text-sm text-gray-600">Unlock the document workspace for 15 minutes.</p>
+        <DocumentCodeForm key={caseId} demo={Boolean(demo)} challenge={workspaceChallenge} onSend={requestWorkspaceCode}
+          onVerify={unlockDocuments} submitLabel="Unlock documents" />
       </section>
     );
   }
@@ -803,7 +809,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDownloadDocument(doc.documentId, doc.documentName);
+                        handleDownloadDocument(doc);
                       }}
                       className="p-2 text-blue-600 hover:bg-blue-100 rounded-full transition-colors"
                       title="Download"
@@ -923,23 +929,15 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
 
             {/* Modal Content */}
             <div className="flex-1 overflow-hidden p-4">
-              {loadingPreview ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                  <span className="ml-3 text-gray-600">Loading preview...</span>
-                </div>
-              ) : documentContent ? (
+              {documentContent && (
                 <div className="h-full">
                   {['locked-preview', 'locked-download'].includes(documentContent.type) && (
-                    <form onSubmit={unlockPhotoPreview} className="mx-auto max-w-sm space-y-4 py-8 text-center">
+                    <div className="mx-auto max-w-sm space-y-4 py-8 text-center">
                       <Eye className="mx-auto h-10 w-10 text-blue-600" />
                       <h4 className="text-lg font-semibold">{selectedDocument.downloadRequested ? 'Unlock file download' : 'Unlock document preview'}</h4>
-                      <p className="text-sm text-gray-600">Enter the same four-digit case PIN each time you {selectedDocument.downloadRequested ? 'download' : 'preview'} a file.</p>
-                      <label htmlFor="photo-preview-pin" className="block text-sm font-medium">Case PIN</label>
-                      <input autoFocus id="photo-preview-pin" type="password" inputMode="numeric" autoComplete="off" pattern="[0-9]{4}" minLength={4} maxLength={4} required value={photoPin} onChange={event => setPhotoPin(event.target.value.replace(/[^0-9]/g, ''))} className="w-full rounded-lg border p-3 text-center text-2xl tracking-widest" />
-                      {photoPinError && <p role="alert" className="text-sm text-red-600">{photoPinError}</p>}
-                      <button disabled={photoPin.length !== 4 || loadingPreview} className="w-full rounded-lg bg-blue-600 p-3 text-white disabled:opacity-50">{selectedDocument.downloadRequested ? 'Download file' : 'View preview'}</button>
-                    </form>
+                      <DocumentCodeForm demo={Boolean(demo)} challenge={fileChallenge} onSend={() => requestFileCode(selectedDocument)}
+                        onVerify={unlockFile} submitLabel={selectedDocument.downloadRequested ? 'Download file' : 'View preview'} />
+                    </div>
                   )}
                   {documentContent.type === 'image' && (
                     <div className="flex items-center justify-center h-full">
@@ -954,7 +952,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
                   {documentContent.type === 'pdf' && (
                     <iframe
                       src={documentContent.url}
-                      className="w-full h-full border-0 rounded"
+                      className="h-[65vh] w-full border-0 rounded"
                       title={selectedDocument.documentName}
                     />
                   )}
@@ -975,7 +973,7 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
                         Preview is not supported for {selectedDocument.documentType.toUpperCase()} files.
                       </p>
                       <button
-                        onClick={() => handleDownloadDocument(selectedDocument.documentId, selectedDocument.documentName)}
+                        onClick={() => handleDownloadDocument(selectedDocument)}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                       >
                         <Download className="w-4 h-4" />
@@ -984,22 +982,8 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
                     </div>
                   )}
                   
-                  {documentContent.type === 'error' && (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
-                      <AlertCircle className="w-16 h-16 mb-4 text-red-400" />
-                      <h4 className="text-lg font-medium text-gray-900 mb-2">Error Loading Preview</h4>
-                      <p className="text-gray-600 mb-4">{documentContent.message}</p>
-                      <button
-                        onClick={() => handleDownloadDocument(selectedDocument.documentId, selectedDocument.documentName)}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        <Download className="w-4 h-4" />
-                        Try Download Instead
-                      </button>
-                    </div>
-                  )}
                 </div>
-              ) : null}
+              )}
             </div>
 
             {/* Modal Footer */}
@@ -1011,8 +995,8 @@ const CaseDocumentManager = ({ caseId, userRole, authData, onDocumentsChange }) 
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => handleDownloadDocument(selectedDocument.documentId, selectedDocument.documentName)}
-                  disabled={!!selectedDocument.localFile || ['locked-preview', 'locked-download'].includes(documentContent?.type) || loadingPreview}
+                  onClick={() => handleDownloadDocument(selectedDocument)}
+                  disabled={!!selectedDocument.localFile || ['locked-preview', 'locked-download'].includes(documentContent?.type)}
                   className="flex items-center gap-2 px-3 py-1 text-blue-600 hover:bg-blue-100 rounded transition-colors"
                 >
                   <Download className="w-4 h-4" />

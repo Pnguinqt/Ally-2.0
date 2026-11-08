@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { caseService as productionCaseService } from '../services/caseService.jsx';
 import { documentService as productionDocumentService } from '../services/documentService.js';
 import { useDemoRuntime } from '../demo/DemoContext';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { getAuthData } from '../utils/auth.jsx';
 import CaseDocumentManager from '../components/CaseDocumentManager.jsx';
 import CaseHearingCalendar from '../components/CaseHearingCalendar.jsx';
@@ -17,6 +17,7 @@ const LegalWorkspacePage = () => {
   const demo = useDemoRuntime();
   const caseService = demo?.caseService || productionCaseService;
   const documentService = demo?.documentService || productionDocumentService;
+  const { key: locationKey } = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [authData, setAuthData] = useState(null);
   const [cases, setCases] = useState([]);
@@ -29,7 +30,6 @@ const LegalWorkspacePage = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [acceptingCaseId, setAcceptingCaseId] = useState(null);
   const acceptingCase = useRef(false);
-  const [documentPinNotice, setDocumentPinNotice] = useState(null);
   const [showSubmissionForm, setShowSubmissionForm] = useState(false);
   const [caseListVersion, setCaseListVersion] = useState(0);
   const submittedCaseId = useRef(null);
@@ -46,7 +46,7 @@ const LegalWorkspacePage = () => {
     const tab = searchParams.get('tab');
     if (tab === 'ai') setActiveTab('overview');
     else if (demo && ['overview', 'hearings', 'documents', 'notes'].includes(tab)) setActiveTab(tab);
-  }, [demo, searchParams]);
+  }, [demo, locationKey, searchParams]);
 
   useEffect(() => {
     if (demo && selectedCaseId) demo.visit(activeTab);
@@ -155,10 +155,7 @@ const LegalWorkspacePage = () => {
       setCases(current => current.map(item => item.caseId === caseId
         ? { ...item, status: accepted.status || 'ACCEPTED' }
         : item));
-      if (accepted.generatedDocumentPin) {
-        setDocumentPinNotice({ caseId, pin: accepted.generatedDocumentPin });
-      }
-      toast.success('Case accepted. Document access is now available with the case PIN.');
+      toast.success('Case accepted. Document access is now available with an email code.');
     } catch (error) {
       toast.error(error.message || 'Failed to accept case. Please try again.');
     } finally {
@@ -180,18 +177,9 @@ const LegalWorkspacePage = () => {
 
   return (
     <div className="px-4 py-4 mx-auto max-w-7xl lg:flex lg:h-[calc(100dvh-var(--workspace-offset,4rem))] lg:min-h-0 lg:flex-col">
-      {documentPinNotice && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="workspace-generated-pin-title">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 text-center shadow-xl">
-            <h2 id="workspace-generated-pin-title" className="text-xl font-semibold">Case accepted — save your document PIN</h2>
-            <p className="mt-3 text-sm text-gray-600">Case #{documentPinNotice.caseId}. This PIN is shown once. Save it securely and share it with your client. You will both need it to unlock Documents.</p>
-            <p className="my-6 font-mono text-4xl tracking-widest">{documentPinNotice.pin}</p>
-            <button autoFocus className="w-full rounded-lg bg-blue-600 p-3 text-white" onClick={() => setDocumentPinNotice(null)}>I saved the PIN</button>
-          </div>
-        </div>
-      )}
       {showSubmissionForm && authData?.accountType === 'CLIENT' && (
         <CaseSubmissionForm
+          practiceDraftOnly={Boolean(demo && cases.length)}
           onClose={() => setShowSubmissionForm(false)}
           onSuccess={savedCase => {
             setShowSubmissionForm(false);
@@ -210,7 +198,7 @@ const LegalWorkspacePage = () => {
           <button type="button" onClick={() => setShowSubmissionForm(true)}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
             <Plus className="h-4 w-4" />
-            Submit New Case
+            {demo && cases.length > 0 ? 'Practice AI drafting' : 'Submit New Case'}
           </button>
         )}
       </div>
@@ -304,7 +292,7 @@ const LegalWorkspacePage = () => {
                       <h3 className="text-lg font-semibold text-gray-900">Case Documents</h3>
                     </div>
                     {selectedCase.status === 'ACCEPTED' ? (
-                      <CaseDocumentManager caseId={selectedCase.caseId} caseInfo={selectedCase} userRole={authData.accountType}
+                      <CaseDocumentManager key={selectedCase.caseId} caseId={selectedCase.caseId} caseInfo={selectedCase} userRole={authData.accountType}
                         authData={authData} onDocumentsChange={() => refreshDocumentCount(selectedCase.caseId)} />
                     ) : (
                       <p className="p-6 text-sm text-gray-600 border border-gray-200 rounded-md bg-gray-50">Document access opens once the case is accepted.</p>
