@@ -35,9 +35,9 @@ public class EmailService {
             throw new IllegalArgumentException("Email to, subject, and body must not be empty");
         }
         if (!StringUtils.hasText(apiToken) || !StringUtils.hasText(fromEmail)) {
-            logFailure(new EmailDeliveryException("configuration"), null,
-                "Missing API key or sender configuration", started);
-            throw new EmailDeliveryException("Email delivery is not configured on the server.");
+            var exception = new EmailDeliveryException.NotConfigured();
+            logFailure(exception, null, "Missing API key or sender configuration", started);
+            throw exception;
         }
         var headers = new HttpHeaders();
         headers.set("api-key", apiToken);

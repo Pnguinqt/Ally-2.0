@@ -14,8 +14,10 @@ import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Bucket;
@@ -192,10 +194,10 @@ public class DocumentService {
      */
     public DocumentEntity retrieveDocument(int documentId, int userId, String userRole) {
         DocumentEntity document = documentRepo.findById(documentId)
-            .orElseThrow(() -> new RuntimeException("Document not found"));
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
 
         if (!validateDocumentAccess(document, userId, userRole)) {
-            throw new RuntimeException("Access denied: User does not have permission to access this document");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission to access this document");
         }
 
         return document;
@@ -287,7 +289,7 @@ public class DocumentService {
         switch (userRole.toUpperCase()) {
             case "CLIENT":
                 // Clients can access documents from their own cases
-                return legalCase.getClient().getUserId() == userId;
+                return legalCase.getClient() != null && legalCase.getClient().getUserId() == userId;
             case "LAWYER":
                 // Lawyers can access documents from their assigned cases
                 return legalCase.getLawyer() != null && legalCase.getLawyer().getUserId() == userId;

@@ -98,7 +98,7 @@ public class LegalCaseService {
     
     public LegalCasesEntity updateCaseStatus(int caseId, CaseStatus status) {
         if (status == CaseStatus.ACCEPTED) {
-            throw new IllegalArgumentException("Use the case acceptance action to generate the document PIN");
+            throw new IllegalArgumentException("Use the case acceptance action to accept this case");
         }
         LegalCasesEntity legalCase = legalCaseRepo.findById(caseId)
                 .orElseThrow(() -> new RuntimeException("Case not found with ID: " + caseId));
@@ -154,12 +154,9 @@ public class LegalCaseService {
                 || actor.getUserId() != lawyerIdPerformingAction || !"LAWYER".equals(actor.getAccountType().toString())) {
             throw new RuntimeException("Only the assigned authenticated lawyer can accept this case");
         }
-        if (legalCase.getStatus() != CaseStatus.PENDING || legalCase.getDocumentPinHash() != null) {
+        if (legalCase.getStatus() != CaseStatus.PENDING) {
             throw new RuntimeException("Only pending cases can be accepted");
         }
-        String pin = String.format(java.util.Locale.ROOT, "%04d", new java.security.SecureRandom().nextInt(10000));
-        legalCase.setDocumentPinHash(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(pin));
-        legalCase.setGeneratedDocumentPin(pin);
         legalCase.setStatus(CaseStatus.ACCEPTED);
         return legalCaseRepo.save(legalCase);
     }
