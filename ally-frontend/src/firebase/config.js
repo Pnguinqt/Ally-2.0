@@ -4,7 +4,6 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getAnalytics } from "firebase/analytics";
 import { getStorage } from "firebase/storage";
-import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDikLb4sudYlxXLaaFJCkoes4jwSxViB5c",
@@ -12,8 +11,7 @@ const firebaseConfig = {
   projectId: "ally-legal-assistant",
   storageBucket: "ally-legal-assistant.firebasestorage.app",
   messagingSenderId: "887162634306",
-  appId: "1:887162634306:web:b99f0dc72ee17d5f64eddb",
-  databaseURL: "https://ally-legal-assistant-default-rtdb.firebaseio.com"
+  appId: "1:887162634306:web:b99f0dc72ee17d5f64eddb"
 };
 
 // Initialize Firebase
@@ -24,4 +22,3 @@ export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const analytics = getAnalytics(app);
 export const storage = getStorage(app);
-export const database = getDatabase(app);

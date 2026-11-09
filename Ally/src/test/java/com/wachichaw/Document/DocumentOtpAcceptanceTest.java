@@ -30,7 +30,7 @@ class DocumentOtpAcceptanceTest {
         lawyer.setAccountType(AccountType.LAWYER);
         legalCase.setLawyer(lawyer);
         legalCase.setStatus(CaseStatus.PENDING);
-        when(repo.findByIdForHearingBooking(7)).thenReturn(Optional.of(legalCase));
+        when(repo.findByIdForUpdate(7)).thenReturn(Optional.of(legalCase));
         when(repo.save(legalCase)).thenReturn(legalCase);
         var service = new LegalCaseService(repo);
         assertThrows(RuntimeException.class, () -> service.acceptCase(7, 2));

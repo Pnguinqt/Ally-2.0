@@ -2,13 +2,15 @@ package com.wachichaw.Config;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.wachichaw.User.Entity.UserEntity;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -16,10 +18,18 @@ import javax.crypto.SecretKey;
 
 @Component
 public class JwtUtil {
-    // Use a secure, base64-encoded secret key string in production!
-    private static final String SECRET = "ReplaceThisWithASecretKeyOfAtLeast32Characters!";
-    private SecretKey secretKey = Keys.hmacShaKeyFor(SECRET.getBytes()); // Generates a secure key
+    private final SecretKey secretKey;
     private long expirationTime = 1000 * 60 * 60; // 1 hour
+
+    public JwtUtil() {
+        this("");
+    }
+
+    @Autowired
+    public JwtUtil(@Value("${JWT_SECRET:}") String secret) {
+        secretKey = secret.isBlank() ? Jwts.SIG.HS256.key().build()
+            : Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
 
     // Generate token for UserEntity without role attribute
     public String generateToken(UserEntity user) {
@@ -44,6 +54,10 @@ public class JwtUtil {
 
     public String extractUserId(String token) {
         return Jwts.parser().verifyWith(secretKey).build().parseSignedClaims(token).getPayload().getSubject();
+    }
+
+    public long extractExpirationMillis(String token) {
+        return extractAllClaims(token).getExpiration().getTime();
     }
 
     public String extractUsername(String token) {

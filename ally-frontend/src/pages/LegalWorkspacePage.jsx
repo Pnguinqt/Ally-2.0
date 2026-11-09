@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, Loader2, NotebookPen, Plus, UserRound } from 'lucide-react';
+import { BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, Loader2, Plus, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { caseService as productionCaseService } from '../services/caseService.jsx';
 import { documentService as productionDocumentService } from '../services/documentService.js';
@@ -11,6 +11,7 @@ import CaseHearingCalendar from '../components/CaseHearingCalendar.jsx';
 import CaseSubmissionForm from '../components/CaseSubmissionForm.jsx';
 import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import WorkspaceCaseSidebar from '../components/WorkspaceCaseSidebar.jsx';
+import WorkspaceNotes from '../components/WorkspaceNotes.jsx';
 import { workspaceCaseGroup } from '../utils/workspaceCases.js';
 
 const LegalWorkspacePage = () => {
@@ -23,7 +24,6 @@ const LegalWorkspacePage = () => {
   const [cases, setCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [documentCounts, setDocumentCounts] = useState({});
-  const [notes, setNotes] = useState('');
   const [caseListTab, setCaseListTab] = useState('recent');
   const [caseSidebarCollapsed, setCaseSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -81,6 +81,7 @@ const LegalWorkspacePage = () => {
         setCaseListTab(initialTab);
         setSelectedCaseId(submittedCase?.caseId || initialCases[0]?.caseId || null);
         submittedCaseId.current = null;
+        setLoading(false);
         const counts = await Promise.all(visibleCases.map(async item =>
           [item.caseId, await documentService.getDocumentCount(item.caseId)]));
         if (!active) return;
@@ -97,15 +98,6 @@ const LegalWorkspacePage = () => {
     load();
     return () => { active = false; };
   }, [authData, caseListVersion]);
-
-  useEffect(() => {
-    if (!authData || !selectedCaseId) {
-      setNotes('');
-      return;
-    }
-
-    setNotes(demo ? demo.getNotes() : localStorage.getItem(getNotesKey(selectedCaseId, authData.userId)) || '');
-  }, [selectedCaseId, authData]);
 
   const refreshDocumentCount = async caseId => {
     try {
@@ -128,13 +120,6 @@ const LegalWorkspacePage = () => {
     setSelectedCaseId(current => nextCases.some(item => item.caseId === Number(current))
       ? current
       : nextCases[0]?.caseId || null);
-  };
-
-  const saveNotes = (value) => {
-    setNotes(value);
-    if (!authData || !selectedCaseId) return;
-    if (demo) demo.saveNotes(value);
-    else localStorage.setItem(getNotesKey(selectedCaseId, authData.userId), value);
   };
 
   const participant = getParticipant(selectedCase, authData?.accountType);
@@ -176,7 +161,7 @@ const LegalWorkspacePage = () => {
   }
 
   return (
-    <div className="px-4 py-4 mx-auto max-w-7xl lg:flex lg:h-[calc(100dvh-var(--workspace-offset,4rem))] lg:min-h-0 lg:flex-col">
+    <div className="px-4 py-4 mx-auto max-w-7xl lg:flex lg:h-[calc(100dvh-var(--workspace-offset,4rem))] lg:min-h-[28rem] lg:flex-col">
       {showSubmissionForm && authData?.accountType === 'CLIENT' && (
         <CaseSubmissionForm
           practiceDraftOnly={Boolean(demo && cases.length)}
@@ -282,7 +267,7 @@ const LegalWorkspacePage = () => {
                 </WorkspacePanel>
 
                 <WorkspacePanel id="hearings" activeTab={activeTab}>
-                  <CaseHearingCalendar caseInfo={selectedCase} authData={authData} />
+                  <CaseHearingCalendar caseInfo={selectedCase} authData={authData} active={activeTab === 'hearings'} />
                 </WorkspacePanel>
 
                 <WorkspacePanel id="documents" activeTab={activeTab}>
@@ -301,17 +286,7 @@ const LegalWorkspacePage = () => {
                 </WorkspacePanel>
 
                 <WorkspacePanel id="notes" activeTab={activeTab}>
-                  <div className="flex min-h-[320px] flex-col p-5 bg-white lg:h-full">
-                    <div className="flex items-center gap-2 mb-3">
-                      <NotebookPen className="w-5 h-5 text-blue-600" />
-                      <h3 className="text-lg font-semibold text-gray-900">Workspace Notes</h3>
-                    </div>
-                    <label htmlFor="workspace-notes" className="mb-3 text-sm text-gray-500">Keep your private next steps, questions, and reminders for this case.</label>
-                    <textarea id="workspace-notes" value={notes} onChange={event => saveNotes(event.target.value)}
-                      placeholder="Add your notes here…"
-                      className="flex-1 min-h-[220px] w-full p-3 text-sm border border-gray-300 rounded-md resize-y focus:border-blue-500 focus:ring-2 focus:ring-blue-100 lg:resize-none" />
-                    <p className="mt-3 text-xs text-gray-500">Saved automatically in this browser for this case.</p>
-                  </div>
+                  {activeTab === 'notes' && <WorkspaceNotes caseId={selectedCase.caseId} auth={authData} demo={demo} />}
                 </WorkspacePanel>
 
               </div>
@@ -400,8 +375,6 @@ const sortCasesByRecency = caseItems => [...caseItems].sort((first, second) => {
   const secondTimestamp = Date.parse(second.updatedAt || second.dateSubmitted || '') || 0;
   return secondTimestamp - firstTimestamp || Number(second.caseId || 0) - Number(first.caseId || 0);
 });
-
-const getNotesKey = (caseId, userId) => `ally.workspace.notes.${userId}.${caseId}`;
 
 const getCaseTimeline = (caseItem) => {
   if (!caseItem) return [];
