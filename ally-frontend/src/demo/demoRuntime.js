@@ -1,6 +1,8 @@
 import { demoRequest, getDemoFile, saveDemoFile, deleteDemoFile } from './demoService';
 import { MAX_PDF_BYTES, questUnlocked } from './demoState';
+import { createDemoDocumentCodes } from './demoDocumentCodes.js';
 import { documentService as realDocuments } from '../services/documentService';
+import { validMeetingLink } from '../utils/appointmentMeetings.js';
 
 export const demoPath = path => path.startsWith('/demo') ? path : path === '/' || path === '/consult' ? '/demo/chat' : `/demo${path}`;
 export const demoProfile = { id: -1, userId: -1, Fname: 'Respondent', Lname: 'Demo Client', firstName: 'Respondent',
@@ -47,52 +49,108 @@ export function createDemoRuntime(getState, dispatch) {
     try { return await cachedLawyers; }
     catch (error) { cachedLawyers = null; throw error; }
   };
+  const codes = createDemoDocumentCodes(() => getState().id);
+  const requireDocumentCase = caseId => {
+    if (Number(caseId) !== requireCase().caseId) throw new Error('Practice case not found.');
+  };
+  const requireDocument = id => {
+    const caseId = requireCase().caseId;
+    codes.requireWorkspaceAccess(caseId);
+    const doc = demoDocument(getState());
+    if (!doc || doc.documentId !== id) throw new Error('Practice document not found.');
+    return doc;
+  };
+  const readDocumentFile = async id => {
+    requireDocument(id);
+    const file = await getDemoFile(getState().id);
+    requireDocument(id);
+    if (!file) throw new Error('Upload your PDF again. Its local copy is unavailable.');
+    return file;
+  };
   const documentService = {
     getFileType: realDocuments.getFileType, formatFileSize: realDocuments.formatFileSize, formatDate: realDocuments.formatDate,
     validateFileType: name => /\.pdf$/i.test(name), validateFileSize: size => size > 0 && size <= MAX_PDF_BYTES,
-    getCaseDocuments: async () => getState().document ? [demoDocument(getState())] : [],
+    workspaceAccess: async caseId => {
+      requireDocumentCase(caseId);
+      return codes.workspaceAccess(caseId);
+    },
+    requestWorkspaceCode: async caseId => {
+      requireDocumentCase(caseId);
+      return codes.issue(`workspace:${caseId}`);
+    },
+    unlockWorkspace: async (caseId, code) => {
+      requireDocumentCase(caseId);
+      const access = codes.unlockWorkspace(caseId, code);
+      dispatch({ type: 'unlock-documents' });
+      return access;
+    },
+    requestFileCode: async (caseId, doc) => {
+      requireDocumentCase(caseId);
+      codes.requireWorkspaceAccess(caseId);
+      if (doc.localFile) return codes.issue(`local-preview:${caseId}`);
+      requireDocument(doc.documentId);
+      return codes.issue(`${doc.downloadRequested ? 'download' : 'preview'}:${doc.documentId}`);
+    },
+    verifyLocalPreviewCode: async (caseId, code) => {
+      requireDocumentCase(caseId);
+      codes.requireWorkspaceAccess(caseId);
+      codes.verify(`local-preview:${caseId}`, code);
+    },
+    getCaseDocuments: async caseId => {
+      requireDocumentCase(caseId);
+      codes.requireWorkspaceAccess(caseId);
+      return getState().document ? [demoDocument(getState())] : [];
+    },
     getDocumentCount: async () => getState().document ? 1 : 0,
-    uploadDocument: async (_user, _case, file) => busy(async () => {
-      requireCase();
+    uploadDocument: async (_user, caseId, file) => busy(async () => {
+      requireDocumentCase(caseId);
+      codes.requireWorkspaceAccess(caseId);
       const state = getState();
-      if (!questUnlocked(state, 'upload')) throw new Error('Complete both chatbot quests, review Overview and Hearings, and add a workspace note before the PDF quest.');
+      if (!questUnlocked(state, 'upload')) throw new Error('Review Overview and Appointment Calendar, then add a workspace note before the PDF quest.');
       if (!/\.pdf$/i.test(file.name) || !documentService.validateFileSize(file.size)) throw new Error('Choose a PDF up to 10 MB.');
       if (await file.slice(0, 5).text() !== '%PDF-') throw new Error('Choose a valid PDF file.');
       await saveDemoFile(state.id, file);
-      const document = { name: file.name, size: file.size, documentId: -Date.now(), uploadedAt: new Date().toISOString() };
+      const document = { name: file.name, size: file.size, documentId: crypto.randomUUID(), uploadedAt: new Date().toISOString() };
       dispatch({ type: 'upload', document });
       return demoDocument({ document });
     }),
-    summarizeDocument: async () => busy(async () => {
-      const state = getState();
-      if (!questUnlocked(state, 'summary')) throw new Error('Upload the sample PDF before summarizing it.');
-      const file = await getDemoFile(state.id);
-      if (!file) throw new Error('Upload your PDF again; this browser no longer has its local copy.');
+    summarizeDocument: async id => busy(async () => {
+      if (!questUnlocked(getState(), 'summary')) throw new Error('Upload the sample PDF before summarizing it.');
+      const file = await readDocumentFile(id);
       const form = new FormData(); form.append('file', file, file.name);
       const summary = await demoRequest('/summary', { method: 'POST', body: form });
       if (!summary.summary?.trim()) throw new Error('The AI returned an empty summary. Try again.');
+      requireDocument(id);
       dispatch({ type: 'summary', summary });
       return summary;
     }),
-    deleteDocument: async () => {
+    deleteDocument: async id => busy(async () => {
+      requireDocument(id);
       await deleteDemoFile(getState().id);
       dispatch({ type: 'delete-document' }); return true;
-    },
-    getDocumentFile: async () => {
-      const file = await getDemoFile(getState().id);
-      if (!file) throw new Error('Upload your PDF again; its local copy is unavailable.');
+    }),
+    previewDocument: async (id, code, signal) => {
+      requireDocument(id);
+      codes.verify(`preview:${id}`, code);
+      const file = await readDocumentFile(id);
+      if (!signal?.aborted) dispatch({ type: 'review-document' });
       return file;
     },
-    downloadDocument: async (_id, name) => {
-      const file = await documentService.getDocumentFile();
+    downloadDocument: async (id, name, code, signal) => {
+      requireDocument(id);
+      codes.verify(`download:${id}`, code);
+      const file = await readDocumentFile(id);
+      if (signal?.aborted) return false;
       const url = URL.createObjectURL(file); const link = document.createElement('a');
-      link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); return true;
+      link.href = url; link.download = name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      dispatch({ type: 'review-document' });
+      return true;
     },
   };
   const caseService = {
     getClientCases: async () => getState().legalCase ? [demoCase(getState())] : [],
     createCase: async (_client, data) => {
-      if (!questUnlocked(getState(), 'case')) throw new Error('Complete a normal query with Case Search OFF and a case search with Case Search ON before creating your civil case.');
+      if (!questUnlocked(getState(), 'case')) throw new Error('Finish the normal query and Case Search quests, including the Case Search question in Quests, before creating your civil case.');
       if (getState().legalCase) throw new Error('Your practice case already exists. You can edit it or reset the demo.');
       if (data.caseType !== 'CIVIL') throw new Error('Use Civil for this evaluation.');
       const lawyer = (await loadLawyers()).find(item => item.userId === data.lawyerId);
@@ -104,6 +162,61 @@ export function createDemoRuntime(getState, dispatch) {
     updateCase: async (_id, changes) => {
       const legalCase = { ...requireCase(), ...changes, caseType: 'CIVIL', updatedAt: new Date().toISOString() };
       dispatch({ type: 'update-case', legalCase }); return legalCase;
+    },
+  };
+  const listCaseAppointments = () => {
+    const item = requireCase();
+    if (Array.isArray(getState().caseAppointments)) return getState().caseAppointments;
+    const start = new Date(item.createdAt || item.dateSubmitted);
+    start.setDate(start.getDate() + 7); start.setHours(9, 0, 0, 0);
+    return [{ hearingId: -1, caseId: item.caseId, title: 'Example case conference (simulated)',
+      startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 3600000).toISOString(),
+      location: 'Demo court / location', notes: 'Bring the agreement and payment records. Example only; no appointment is actually booked.',
+      meetingType: 'F2F', meetingLink: null, status: 'PENDING', proposedBy: item.lawyer.userId, bookedBy: item.lawyer.userId, revision: 1 }];
+  };
+  const saveCaseAppointments = (items, practiced = false) => dispatch({ type: 'case-appointments', items, practiced });
+  const findCaseAppointment = (id, revision) => {
+    const item = listCaseAppointments().find(item => item.hearingId === id);
+    if (!item) throw new Error('Appointment not found.');
+    if (item.revision !== revision) throw new Error('This appointment has changed. Refresh and try again.');
+    return item;
+  };
+  const validateProposal = (data, id) => {
+    requireCase();
+    if (!data.title.trim() || new Date(data.startsAt).getTime() <= Date.now() || data.endsAt <= data.startsAt) {
+      throw new Error('Enter a title and valid future appointment time.');
+    }
+    if (data.meetingType && !['F2F', 'ONLINE'].includes(data.meetingType)) throw new Error('Choose Face-to-face or Online.');
+    if (data.meetingType === 'ONLINE' ? !validMeetingLink(data.meetingLink) : !data.location?.trim()) {
+      throw new Error(data.meetingType === 'ONLINE' ? 'Enter a valid http or https meeting link.' : 'Enter the meeting venue / address.');
+    }
+    if (listCaseAppointments().some(item => item.hearingId !== id && item.startsAt < data.endsAt && item.endsAt > data.startsAt)) {
+      throw new Error('This case already has an appointment at that time.');
+    }
+  };
+  const hearingService = {
+    list: async () => listCaseAppointments(),
+    book: async (_caseId, data) => {
+      validateProposal(data);
+      const item = { ...data, caseId: -1, hearingId: -Date.now(), status: 'PENDING', proposedBy: -1, bookedBy: -1, revision: 1 };
+      saveCaseAppointments([...listCaseAppointments(), item], true); return item;
+    },
+    edit: async (_caseId, id, data) => {
+      const original = findCaseAppointment(id, data.revision); validateProposal(data, id);
+      if (new Date(original.startsAt).getTime() <= Date.now()) throw new Error('An appointment that has started cannot be edited.');
+      const item = { ...original, ...data, proposedBy: -1, status: 'PENDING', acceptedBy: null, revision: original.revision + 1 };
+      saveCaseAppointments(listCaseAppointments().map(value => value.hearingId === id ? item : value), true); return item;
+    },
+    accept: async (_caseId, id, revision) => {
+      const original = findCaseAppointment(id, revision);
+      if (original.proposedBy === -1 || original.status !== 'PENDING') throw new Error('Only the other participant can accept a pending proposal.');
+      if (new Date(original.startsAt).getTime() <= Date.now()) throw new Error('This appointment has already started.');
+      const item = { ...original, status: 'CONFIRMED', acceptedBy: -1, revision: revision + 1 };
+      saveCaseAppointments(listCaseAppointments().map(value => value.hearingId === id ? item : value), true); return item;
+    },
+    delete: async (_caseId, id, revision) => {
+      findCaseAppointment(id, revision);
+      saveCaseAppointments(listCaseAppointments().filter(item => item.hearingId !== id));
     },
   };
   const chatService = {
@@ -197,9 +310,8 @@ export function createDemoRuntime(getState, dispatch) {
     getUser: async id => id === -1 ? demoProfile : (await loadLawyers()).map(item => ({ ...item, id: item.userId,
       fullName: `${item.Fname} ${item.Lname}`, firstName: item.Fname, lastName: item.Lname })).find(item => String(item.id) === String(id)),
     path: demoPath, caseService, documentService, chatService, scheduleService, loadLawyers, messaging,
-    hearingService: { list: async () => { const item = requireCase(); const start = new Date(item.createdAt || item.dateSubmitted); start.setDate(start.getDate() + 7);
-      start.setHours(9, 0, 0, 0); return [{ hearingId: -1, title: 'Example case conference (simulated)', startsAt: start.toISOString(),
-        endsAt: new Date(start.getTime() + 3600000).toISOString(), location: 'Demo court / location', notes: 'Bring the agreement and payment records. Example only; no hearing is actually booked.' }]; } },
+    hearingService,
+    applyDraft: () => dispatch({ type: 'apply-draft' }),
     saveNotes: notes => dispatch({ type: 'save-notes', notes }), getNotes: () => getState().notes,
     visit: tab => dispatch({ type: 'visit', tab }),
     saveChat: chat => dispatch({ type: 'save-chat', chat }), getChat: () => ({ conversationId: getState().chatId || getState().id,

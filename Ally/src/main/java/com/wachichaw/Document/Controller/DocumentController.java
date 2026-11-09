@@ -205,7 +205,7 @@ public class DocumentController {
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
             .header(HttpHeaders.ALLOW, "POST")
             .header(HttpHeaders.CACHE_CONTROL, "no-store")
-            .body(Map.of("message", "Use the PIN-protected download action."));
+            .body(Map.of("message", "Use the email code download action."));
     }
 
     /**

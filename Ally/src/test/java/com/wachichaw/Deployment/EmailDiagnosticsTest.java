@@ -42,14 +42,14 @@ class EmailDiagnosticsTest {
     @Test void missingKeyIsLoggedWithoutNetwork(CapturedOutput output) {
         var service = service(); var server = server(service);
         ReflectionTestUtils.setField(service, "apiToken", " ");
-        assertThrows(EmailDeliveryException.class, () -> send(service));
+        assertThrows(EmailDeliveryException.NotConfigured.class, () -> send(service));
         assertTrue(output.getOut().contains("apiKeyConfigured=false senderConfigured=true"));
         server.verify();
     }
     @Test void missingSenderIsLogged(CapturedOutput output) {
         var service = service(); var server = server(service);
         ReflectionTestUtils.setField(service, "fromEmail", "");
-        assertThrows(EmailDeliveryException.class, () -> send(service));
+        assertThrows(EmailDeliveryException.NotConfigured.class, () -> send(service));
         assertTrue(output.getOut().contains("apiKeyConfigured=true senderConfigured=false"));
         server.verify();
     }
