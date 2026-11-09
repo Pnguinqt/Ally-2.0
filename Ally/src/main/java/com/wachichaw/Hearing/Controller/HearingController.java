@@ -42,6 +42,28 @@ public class HearingController {
         return service.book(caseId, authenticate(authorization), request);
     }
 
+    @PutMapping("/{hearingId}")
+    public HearingResponse edit(@PathVariable int caseId, @PathVariable Long hearingId,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody HearingRequest request) {
+        return service.edit(caseId, hearingId, authenticate(authorization), request);
+    }
+
+    @PostMapping("/{hearingId}/accept")
+    public HearingResponse accept(@PathVariable int caseId, @PathVariable Long hearingId,
+            @RequestParam long revision,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        return service.accept(caseId, hearingId, authenticate(authorization), revision);
+    }
+
+    @DeleteMapping("/{hearingId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable int caseId, @PathVariable Long hearingId,
+            @RequestParam long revision,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        service.delete(caseId, hearingId, authenticate(authorization), revision);
+    }
+
     private UserEntity authenticate(String authorization) {
         if (authorization != null && authorization.startsWith("Bearer ")) {
             try {

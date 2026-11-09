@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, Loader2, NotebookPen, UserRound } from 'lucide-react';
+import { BriefcaseBusiness, Calendar, CheckCircle2, Circle, Clock3, FileText, Loader2, NotebookPen, Plus, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { caseService as productionCaseService } from '../services/caseService.jsx';
 import { documentService as productionDocumentService } from '../services/documentService.js';
 import { useDemoRuntime } from '../demo/DemoContext';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { getAuthData } from '../utils/auth.jsx';
 import CaseDocumentManager from '../components/CaseDocumentManager.jsx';
 import CaseHearingCalendar from '../components/CaseHearingCalendar.jsx';
+import CaseSubmissionForm from '../components/CaseSubmissionForm.jsx';
 import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import WorkspaceCaseSidebar from '../components/WorkspaceCaseSidebar.jsx';
 import { workspaceCaseGroup } from '../utils/workspaceCases.js';
@@ -16,7 +17,8 @@ const LegalWorkspacePage = () => {
   const demo = useDemoRuntime();
   const caseService = demo?.caseService || productionCaseService;
   const documentService = demo?.documentService || productionDocumentService;
-  const [searchParams] = useSearchParams();
+  const { key: locationKey } = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [authData, setAuthData] = useState(null);
   const [cases, setCases] = useState([]);
   const [selectedCaseId, setSelectedCaseId] = useState(null);
@@ -28,13 +30,23 @@ const LegalWorkspacePage = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [acceptingCaseId, setAcceptingCaseId] = useState(null);
   const acceptingCase = useRef(false);
-  const [documentPinNotice, setDocumentPinNotice] = useState(null);
+  const [showSubmissionForm, setShowSubmissionForm] = useState(false);
+  const [caseListVersion, setCaseListVersion] = useState(0);
+  const submittedCaseId = useRef(null);
+
+  useEffect(() => {
+    if (authData?.accountType !== 'CLIENT' || !searchParams.get('new')) return;
+    setShowSubmissionForm(true);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('new');
+    setSearchParams(nextParams, { replace: true });
+  }, [authData, searchParams, setSearchParams]);
 
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab === 'ai') setActiveTab('overview');
     else if (demo && ['overview', 'hearings', 'documents', 'notes'].includes(tab)) setActiveTab(tab);
-  }, [demo, searchParams]);
+  }, [demo, locationKey, searchParams]);
 
   useEffect(() => {
     if (demo && selectedCaseId) demo.visit(activeTab);
@@ -61,12 +73,14 @@ const LegalWorkspacePage = () => {
           : await caseService.getClientCases(authData.userId);
         if (!active) return;
         const visibleCases = sortCasesByRecency((caseList || []).filter(item => workspaceCaseGroup(item) !== null));
-        const initialTab = ['recent', 'completed', 'declined'].find(group =>
+        const submittedCase = visibleCases.find(item => Number(item.caseId) === Number(submittedCaseId.current));
+        const initialTab = (submittedCase && workspaceCaseGroup(submittedCase)) || ['recent', 'completed', 'declined'].find(group =>
           visibleCases.some(item => workspaceCaseGroup(item) === group)) || 'recent';
         const initialCases = visibleCases.filter(item => workspaceCaseGroup(item) === initialTab);
         setCases(visibleCases);
         setCaseListTab(initialTab);
-        setSelectedCaseId(initialCases[0]?.caseId || null);
+        setSelectedCaseId(submittedCase?.caseId || initialCases[0]?.caseId || null);
+        submittedCaseId.current = null;
         const counts = await Promise.all(visibleCases.map(async item =>
           [item.caseId, await documentService.getDocumentCount(item.caseId)]));
         if (!active) return;
@@ -82,7 +96,7 @@ const LegalWorkspacePage = () => {
     };
     load();
     return () => { active = false; };
-  }, [authData]);
+  }, [authData, caseListVersion]);
 
   useEffect(() => {
     if (!authData || !selectedCaseId) {
@@ -141,10 +155,7 @@ const LegalWorkspacePage = () => {
       setCases(current => current.map(item => item.caseId === caseId
         ? { ...item, status: accepted.status || 'ACCEPTED' }
         : item));
-      if (accepted.generatedDocumentPin) {
-        setDocumentPinNotice({ caseId, pin: accepted.generatedDocumentPin });
-      }
-      toast.success('Case accepted. Document access is now available with the case PIN.');
+      toast.success('Case accepted. Document access is now available with an email code.');
     } catch (error) {
       toast.error(error.message || 'Failed to accept case. Please try again.');
     } finally {
@@ -166,19 +177,30 @@ const LegalWorkspacePage = () => {
 
   return (
     <div className="px-4 py-4 mx-auto max-w-7xl lg:flex lg:h-[calc(100dvh-var(--workspace-offset,4rem))] lg:min-h-0 lg:flex-col">
-      {documentPinNotice && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-labelledby="workspace-generated-pin-title">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 text-center shadow-xl">
-            <h2 id="workspace-generated-pin-title" className="text-xl font-semibold">Case accepted — save your document PIN</h2>
-            <p className="mt-3 text-sm text-gray-600">Case #{documentPinNotice.caseId}. This PIN is shown once. Save it securely and share it with your client. You will both need it to unlock Documents.</p>
-            <p className="my-6 font-mono text-4xl tracking-widest">{documentPinNotice.pin}</p>
-            <button autoFocus className="w-full rounded-lg bg-blue-600 p-3 text-white" onClick={() => setDocumentPinNotice(null)}>I saved the PIN</button>
-          </div>
-        </div>
+      {showSubmissionForm && authData?.accountType === 'CLIENT' && (
+        <CaseSubmissionForm
+          practiceDraftOnly={Boolean(demo && cases.length)}
+          onClose={() => setShowSubmissionForm(false)}
+          onSuccess={savedCase => {
+            setShowSubmissionForm(false);
+            submittedCaseId.current = savedCase.caseId;
+            setActiveTab('overview');
+            setCaseListVersion(value => value + 1);
+          }}
+        />
       )}
-      <div className="mb-4 shrink-0">
-        <h1 className="text-xl font-bold text-gray-900">Legal Workspace</h1>
-        <p className="mt-1 text-sm text-gray-500">Choose a case, then open the tool you need.</p>
+      <div className="mb-4 flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Legal Workspace</h1>
+          <p className="mt-1 text-sm text-gray-500">Choose a case, then open the tool you need.</p>
+        </div>
+        {authData?.accountType === 'CLIENT' && (
+          <button type="button" onClick={() => setShowSubmissionForm(true)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
+            <Plus className="h-4 w-4" />
+            {demo && cases.length > 0 ? 'Practice AI drafting' : 'Submit New Case'}
+          </button>
+        )}
       </div>
 
       <div className={`grid flex-1 min-h-0 gap-4 ${caseSidebarCollapsed ? 'lg:grid-cols-[64px_minmax(0,1fr)]' : 'lg:grid-cols-[280px_minmax(0,1fr)]'}`}>
@@ -270,7 +292,7 @@ const LegalWorkspacePage = () => {
                       <h3 className="text-lg font-semibold text-gray-900">Case Documents</h3>
                     </div>
                     {selectedCase.status === 'ACCEPTED' ? (
-                      <CaseDocumentManager caseId={selectedCase.caseId} caseInfo={selectedCase} userRole={authData.accountType}
+                      <CaseDocumentManager key={selectedCase.caseId} caseId={selectedCase.caseId} caseInfo={selectedCase} userRole={authData.accountType}
                         authData={authData} onDocumentsChange={() => refreshDocumentCount(selectedCase.caseId)} />
                     ) : (
                       <p className="p-6 text-sm text-gray-600 border border-gray-200 rounded-md bg-gray-50">Document access opens once the case is accepted.</p>

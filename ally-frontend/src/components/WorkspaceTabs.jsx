@@ -3,7 +3,7 @@ import { CalendarDays, FileText, LayoutDashboard, NotebookPen } from 'lucide-rea
 
 const tabs = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'hearings', label: 'Hearings', icon: CalendarDays },
+  { id: 'hearings', label: 'Appointment Calendar', icon: CalendarDays },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'notes', label: 'Notes', icon: NotebookPen },
 ];

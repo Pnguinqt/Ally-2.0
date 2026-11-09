@@ -6,41 +6,50 @@ import java.util.Map;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
+import com.wachichaw.Document.Controller.DocumentOtpController.Code;
 import com.wachichaw.Document.Service.DocumentService;
-import com.wachichaw.Document.Service.DocumentPinService;
+import com.wachichaw.Document.Service.DocumentOtpService;
+import com.wachichaw.Document.Service.DocumentOtpService.Action;
+import com.wachichaw.Document.Service.DocumentOtpService.Scope;
 import com.wachichaw.User.Entity.UserEntity;
 
 @RestController
 @RequestMapping("/api/documents")
 public class DocumentPreviewController {
     private final DocumentService documents;
-    private final DocumentPinService pins;
-    public DocumentPreviewController(DocumentService documents, DocumentPinService pins) {
+    private final DocumentOtpService otp;
+    public DocumentPreviewController(DocumentService documents, DocumentOtpService otp) {
         this.documents = documents;
-        this.pins = pins;
+        this.otp = otp;
     }
-    @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<?> failure(ResponseStatusException error) {
-        return ResponseEntity.status(error.getStatusCode()).cacheControl(CacheControl.noStore())
-            .body(Map.of("message", error.getReason() == null ? "Access denied" : error.getReason()));
+
+    @PostMapping("/{documentId}/{operation:preview|download}/otp")
+    public ResponseEntity<Map<String, Long>> requestCode(@PathVariable int documentId, @PathVariable String operation,
+            @AuthenticationPrincipal UserEntity actor, @RequestHeader("Authorization") String session) {
+        var document = documents.retrieveDocument(documentId, actor.getUserId(), String.valueOf(actor.getAccountType()));
+        int caseId = document.getCaseEntity().getCaseId();
+        otp.requireWorkspaceAccess(caseId, actor, session);
+        Action action = "download".equals(operation) ? Action.DOWNLOAD : Action.PREVIEW;
+        return DocumentOtpController.sent(otp.requestCode(new Scope(caseId, documentId, action), actor));
     }
+
     @PostMapping("/{documentId}/preview")
     public ResponseEntity<byte[]> preview(@PathVariable int documentId, @AuthenticationPrincipal UserEntity actor,
-            @RequestHeader("Authorization") String session, @RequestBody Map<String, String> body) throws IOException {
-        return transfer(documentId, actor, session, body, false);
+            @RequestHeader("Authorization") String session, @RequestBody Code body) throws IOException {
+        return transfer(documentId, actor, session, body.otp(), Action.PREVIEW);
     }
     @PostMapping("/{documentId}/download")
     public ResponseEntity<byte[]> download(@PathVariable int documentId, @AuthenticationPrincipal UserEntity actor,
-            @RequestHeader("Authorization") String session, @RequestBody Map<String, String> body) throws IOException {
-        return transfer(documentId, actor, session, body, true);
+            @RequestHeader("Authorization") String session, @RequestBody Code body) throws IOException {
+        return transfer(documentId, actor, session, body.otp(), Action.DOWNLOAD);
     }
+
     private ResponseEntity<byte[]> transfer(int documentId, UserEntity actor, String session,
-            Map<String, String> body, boolean download) throws IOException {
-        var document = documents.retrieveDocument(documentId, actor.getUserId(), actor.getAccountType().toString());
+            String code, Action action) throws IOException {
+        var document = documents.retrieveDocument(documentId, actor.getUserId(), String.valueOf(actor.getAccountType()));
         int caseId = document.getCaseEntity().getCaseId();
-        if (!pins.unlocked(caseId, actor.getUserId(), session))
-            throw new ResponseStatusException(HttpStatus.LOCKED, "Unlock case documents first");
+        otp.requireWorkspaceAccess(caseId, actor, session);
+        otp.verifyCode(new Scope(caseId, documentId, action), actor, code);
         String type = document.getDocumentType() == null ? "" : document.getDocumentType().toLowerCase(Locale.ROOT);
         String contentType = switch (type) {
             case "jpg", "jpeg" -> "image/jpeg";
@@ -52,11 +61,10 @@ public class DocumentPreviewController {
             case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
             default -> MediaType.APPLICATION_OCTET_STREAM_VALUE;
         };
-        pins.verifyPin(caseId, actor.getUserId(), body.get("pin"));
         var response = ResponseEntity.ok().cacheControl(CacheControl.noStore())
             .header("X-Content-Type-Options", "nosniff")
             .contentType(MediaType.parseMediaType(contentType));
-        if (download) response.header(HttpHeaders.CONTENT_DISPOSITION,
+        if (action == Action.DOWNLOAD) response.header(HttpHeaders.CONTENT_DISPOSITION,
             ContentDisposition.attachment().filename(document.getDocumentName() == null ? "document" : document.getDocumentName(),
                 java.nio.charset.StandardCharsets.UTF_8).build().toString());
         return response.body(documents.readDocumentBytes(document));

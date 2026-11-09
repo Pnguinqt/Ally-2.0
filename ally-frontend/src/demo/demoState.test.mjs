@@ -4,7 +4,8 @@ import { DEMO_KEY, demoReducer, newDemoSession, quests, questUnlocked, readDemoS
 
 const step = (state, type, rest = {}) => demoReducer(state, { type, ...rest });
 const create = state => step(state, 'create-case', { legalCase: { id: 'practice-case' } });
-const finishChats = state => step(step(state, 'chat-success', { mode: 'normal' }), 'chat-success', { mode: 'case-search' });
+const answer = (state, questId) => step(state, 'answer-question', { questId, answer: quests.find(quest => quest.id === questId).question.options[0] });
+const finishChats = state => answer(step(step(state, 'chat-success', { mode: 'normal' }), 'chat-success', { mode: 'case-search' }), 'case-search');
 
 test('normal queries and Case Search complete separately; both unlock case creation', () => {
   let state = newDemoSession();
@@ -21,6 +22,12 @@ test('normal queries and Case Search complete separately; both unlock case creat
   state = step(state, 'chat-success', { mode: 'normal' });
   assert.deepEqual(state.completed, ['chat']);
   state = step(state, 'chat-success', { mode: 'case-search' });
+  assert.deepEqual(state.pendingQuestions, ['case-search']);
+  assert.equal(create(state).legalCase, null);
+  assert.equal(step(state, 'answer-question', { questId: 'case-search', answer: 'invalid' }), state);
+  state = answer(state, 'case-search');
+  assert.deepEqual(state.pendingQuestions, []);
+  assert.equal(answer(state, 'case-search'), state);
   state = create(state);
   assert.deepEqual(state.completed, ['chat', 'case-search', 'case']);
   assert.equal(questUnlocked(state, 'workspace'), true);
@@ -34,19 +41,55 @@ test('workspace requires both tool visits and a saved nonempty note, in any orde
   assert.equal(state.completed.includes('workspace'), false);
   state = step(state, 'visit', { tab: 'overview' });
   assert.equal(state.completed.includes('workspace'), true);
+  assert.equal(questUnlocked(state, 'upload'), false);
+  state = step(state, 'unlock-documents');
   assert.equal(questUnlocked(state, 'upload'), true);
 });
 
-test('a replacement PDF invalidates the previous summary; reset clears all respondent data', () => {
+test('optional quests track practice without blocking case creation or the survey path', () => {
+  let state = step(newDemoSession(), 'start');
+  assert.equal(step(state, 'apply-draft'), state);
+  state = finishChats(state);
+  assert.equal(questUnlocked(state, 'draft'), true);
+  state = create(state);
+  assert.equal(state.completed.includes('draft'), false);
+  assert.equal(questUnlocked(state, 'workspace'), true);
+  assert.equal(questUnlocked(state, 'appointment'), true);
+  state = step(state, 'case-appointments', { items: [] });
+  assert.equal(state.completed.includes('appointment'), false);
+  state = step(state, 'case-appointments', { items: [{ hearingId: -1 }], practiced: true });
+  assert.equal(state.completed.includes('appointment'), false);
+  assert.deepEqual(state.pendingQuestions, ['appointment']);
+  state = answer(state, 'appointment');
+  state = step(state, 'apply-draft');
+  assert.deepEqual(state.completed, ['chat', 'case-search', 'case', 'appointment', 'draft']);
+});
+
+test('a replacement PDF reopens the summary and original PDF quests; reset clears all respondent data', () => {
   let state = create(finishChats(step(newDemoSession(), 'start')));
+  assert.equal(step(state, 'review-document'), state);
+  state = step(state, 'unlock-documents');
   state = step(step(state, 'visit', { tab: 'overview' }), 'visit', { tab: 'hearings' });
   state = step(state, 'save-notes', { notes: 'Gather the agreement' });
   state = step(state, 'upload', { document: { name: 'first.pdf' } });
   state = step(state, 'summary', { summary: { summary: 'First document summary' } });
-  assert.equal(state.completed.length, quests.length);
+  assert.equal(state.completed.includes('review-document'), false);
+  state = step(state, 'review-document');
+  assert.equal(state.completed.includes('review-document'), false);
+  assert.deepEqual(state.pendingQuestions, ['review-document']);
+  state = answer(state, 'review-document');
+  assert.ok(quests.filter(quest => !quest.optional).every(quest => state.completed.includes(quest.id)));
   state = step(state, 'upload', { document: { name: 'replacement.pdf' } });
   assert.equal(state.completed.includes('summary'), false);
+  assert.equal(state.completed.includes('review-document'), false);
+  assert.equal(state.answers['review-document'], undefined);
+  assert.ok(state.answers['case-search']);
+  const pending = step(state, 'review-document');
+  assert.deepEqual(step(pending, 'delete-document').pendingQuestions, []);
   assert.equal(state.summary, null);
+  const deleted = step(state, 'delete-document');
+  assert.equal(deleted.completed.includes('upload'), false);
+  assert.equal(deleted.completed.includes('unlock-documents'), true);
   const reset = step(state, 'reset');
   assert.notEqual(reset.id, state.id);
   assert.equal(reset.legalCase, null);
@@ -54,6 +97,27 @@ test('a replacement PDF invalidates the previous summary; reset clears all respo
   assert.equal(reset.notes, '');
   assert.deepEqual(reset.messages, []);
   assert.deepEqual(reset.completed, []);
+  assert.deepEqual(reset.answers, {});
+});
+
+test('saved documents and proposals carry forward without awarding unseen verification steps', () => {
+  const saved = { ...newDemoSession(), started: true, completed: ['chat', 'case-search', 'case', 'workspace', 'upload', 'summary'],
+    document: { name: 'existing.pdf' }, summary: { summary: 'Existing summary' },
+    caseAppointments: [{ proposedBy: -1, title: 'Practice meeting' }] };
+  const previousStorage = globalThis.sessionStorage;
+  globalThis.sessionStorage = { getItem: () => JSON.stringify(saved) };
+  try {
+    const restored = readDemoSession();
+    assert.deepEqual(restored.document, saved.document);
+    assert.deepEqual(restored.summary, saved.summary);
+    assert.equal(restored.completed.includes('appointment'), true);
+    assert.equal(restored.completed.includes('unlock-documents'), false);
+    assert.equal(restored.completed.includes('review-document'), false);
+    assert.equal(questUnlocked(restored, 'review-document'), true);
+  } finally {
+    if (previousStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = previousStorage;
+  }
 });
 
 test('separate demo sessions have separate identities and activity', () => {
@@ -66,12 +130,31 @@ test('separate demo sessions have separate identities and activity', () => {
 
 test('Case Search alone and unspecified chat successes do not fulfill the normal-query quest', () => {
   let state = step(newDemoSession(), 'start');
+  assert.equal(answer(state, 'case-search'), state);
   state = step(state, 'chat-success');
   assert.deepEqual(state.completed, []);
   state = step(state, 'chat-success', { mode: 'case-search' });
+  state = answer(state, 'case-search');
   assert.deepEqual(state.completed, ['case-search']);
   assert.equal(questUnlocked(state, 'case'), false);
   assert.equal(create(state).legalCase, null);
+});
+
+test('refresh keeps saved answers and leaves unanswered appointment questions pending', () => {
+  let state = create(finishChats(step(newDemoSession(), 'start')));
+  state = step(state, 'case-appointments', { items: [{ proposedBy: -1 }], practiced: true });
+  const previousStorage = globalThis.sessionStorage;
+  globalThis.sessionStorage = { getItem: () => JSON.stringify(state) };
+  try {
+    const restored = readDemoSession();
+    assert.deepEqual(restored.answers, state.answers);
+    assert.deepEqual(restored.pendingQuestions, ['appointment']);
+    assert.equal(restored.completed.includes('appointment'), false);
+    assert.equal(answer(restored, 'appointment').completed.includes('appointment'), true);
+  } finally {
+    if (previousStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = previousStorage;
+  }
 });
 
 test('old sessions retain data and receive credit only for chatbot modes with saved successful replies', () => {
