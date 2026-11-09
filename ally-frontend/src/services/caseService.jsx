@@ -28,7 +28,7 @@ export const caseService = {
   },
 
   // Get cases for a client
-  getClientCases: async (clientId) => {
+  getClientCases: async (clientId, signal) => {
     try {
       const authData = getAuthData();
       if (!authData) {
@@ -37,6 +37,7 @@ export const caseService = {
 
       const response = await fetch(`${API_BASE_URL}/client/${clientId}`, {
         method: 'GET',
+        signal,
         headers: {
           'Authorization': `Bearer ${authData.token}`,
           'Content-Type': 'application/json',
@@ -49,13 +50,13 @@ export const caseService = {
 
       return await response.json();
     } catch (error) {
-      console.error('Error fetching client cases:', error);
+      if (!signal?.aborted) console.error('Error fetching client cases:', error);
       throw error;
     }
   },
 
   // Get cases for a lawyer
-  getLawyerCases: async (lawyerId) => {
+  getLawyerCases: async (lawyerId, signal) => {
     try {
       const authData = getAuthData();
       if (!authData) {
@@ -64,6 +65,7 @@ export const caseService = {
 
       const response = await fetch(`${API_BASE_URL}/lawyer/${lawyerId}`, {
         method: 'GET',
+        signal,
         headers: {
           'Authorization': `Bearer ${authData.token}`,
           'Content-Type': 'application/json',
@@ -76,7 +78,7 @@ export const caseService = {
 
       return await response.json();
     } catch (error) {
-      console.error('Error fetching lawyer cases:', error);
+      if (!signal?.aborted) console.error('Error fetching lawyer cases:', error);
       throw error;
     }
   },

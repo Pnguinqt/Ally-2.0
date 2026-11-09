@@ -7,12 +7,15 @@ import AppointmentMeetingDetails from './AppointmentMeetingDetails.jsx';
 import { hearingService as productionHearingService } from '../services/hearingService.js';
 import { useDemoRuntime } from '../demo/DemoContext';
 import { calendarDate, calendarDateKey, formatHearingDate, formatHearingTime, hearingDateKey, hearingInstant } from '../utils/hearingDates.js';
+import { HEARING_LOAD_TIMEOUT_MS, readHearingSchedule } from '../utils/hearingSchedule.js';
+import useAppointmentPolling from '../hooks/useAppointmentPolling.js';
 
-export default function CaseHearingCalendar({ caseInfo, authData }) {
+export default function CaseHearingCalendar({ caseInfo, authData, active }) {
   const demo = useDemoRuntime();
   const hearingService = demo?.hearingService || productionHearingService;
   const [hearings, setHearings] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(true);
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(Date.now());
@@ -26,26 +29,38 @@ export default function CaseHearingCalendar({ caseInfo, authData }) {
     || authData.accountType === 'CLIENT' && Number(caseInfo.client?.userId) === Number(authData.userId));
 
   useEffect(() => {
+    if (!active) return;
     const controller = new AbortController();
-    hearingService.list(caseInfo.caseId, controller.signal)
-      .then(items => { setHearings(items); setError(''); })
-      .catch(err => { if (err.name !== 'AbortError') setError(err.message); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [caseInfo.caseId, hearingService, refresh]);
-
-  useEffect(() => {
-    const refreshCalendar = () => {
+    const finish = () => {
       setNow(Date.now());
-      setRefresh(value => value + 1);
+      setLoading(false);
+      setRefreshing(false);
     };
-    const interval = window.setInterval(refreshCalendar, 60000);
-    window.addEventListener('focus', refreshCalendar);
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+      setError('Appointments took too long to load.');
+      finish();
+    }, HEARING_LOAD_TIMEOUT_MS);
+    setRefreshing(true);
+    hearingService.list(caseInfo.caseId, controller.signal)
+      .then(response => {
+        if (controller.signal.aborted) return;
+        const { appointments, incomplete } = readHearingSchedule(response);
+        setHearings(appointments);
+        setError(incomplete ? 'Some appointments could not be displayed.' : '');
+      })
+      .catch(err => { if (!controller.signal.aborted) setError(err.message); })
+      .finally(() => {
+        window.clearTimeout(timeout);
+        if (!controller.signal.aborted) finish();
+      });
     return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('focus', refreshCalendar);
+      window.clearTimeout(timeout);
+      controller.abort();
     };
-  }, []);
+  }, [active, caseInfo.caseId, hearingService, refresh]);
+
+  useAppointmentPolling(active && !refreshing && !error, setRefresh);
 
   const hearingDays = useMemo(() => new Set(hearings.map(item => hearingDateKey(item.startsAt))), [hearings]);
   const selectedKey = selectedDate ? calendarDateKey(selectedDate) : null;
@@ -69,8 +84,9 @@ export default function CaseHearingCalendar({ caseInfo, authData }) {
           </p>}
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setRefresh(value => value + 1)} aria-label="Refresh appointments" className="p-2 text-gray-500 rounded-md hover:bg-gray-100">
-            <RefreshCw className="w-4 h-4" />
+          <button type="button" disabled={refreshing} onClick={() => setRefresh(value => value + 1)}
+            aria-label="Refresh appointments" className="p-2 text-gray-500 rounded-md hover:bg-gray-100 disabled:opacity-50">
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
           {canBook && (
             <button type="button" aria-haspopup="dialog" onClick={() => {

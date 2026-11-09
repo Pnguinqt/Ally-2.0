@@ -59,7 +59,7 @@ class HearingAccessTest {
         when(users.findById(1)).thenReturn(Optional.of(lawyer));
         when(users.findById(2)).thenReturn(Optional.of(client));
         when(cases.findById(10)).thenReturn(Optional.of(legalCase));
-        when(cases.findByIdForHearingBooking(10)).thenReturn(Optional.of(legalCase));
+        when(cases.findByIdForUpdate(10)).thenReturn(Optional.of(legalCase));
         when(hearings.findByLegalCaseCaseIdOrderByStartsAtAsc(10)).thenReturn(List.of());
         when(hearings.save(any())).thenAnswer(invocation -> {
             HearingEntity hearing = invocation.getArgument(0);
@@ -167,7 +167,7 @@ class HearingAccessTest {
 
     @Test void missingCasesReturnNotFound() throws Exception {
         when(cases.findById(10)).thenReturn(Optional.empty());
-        when(cases.findByIdForHearingBooking(10)).thenReturn(Optional.empty());
+        when(cases.findByIdForUpdate(10)).thenReturn(Optional.empty());
         mvc.perform(get(URL).header("Authorization", token(client))).andExpect(status().isNotFound());
         mvc.perform(post(URL).header("Authorization", token(lawyer)).contentType(MediaType.APPLICATION_JSON).content(validRequest()))
             .andExpect(status().isNotFound());

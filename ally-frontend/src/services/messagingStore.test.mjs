@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { deleteApp, initializeApp } from 'firebase/app';
+import { getDatabase, ref } from 'firebase/database';
 import { createMessagingStore } from './messagingStore.js';
 import { memoryRealtimeDb } from './test-support/realtimeDb.mjs';
 
@@ -14,6 +16,21 @@ function setup(seed) {
   const store = createMessagingStore({ ...db, now: () => ++clock, fetchUserDetails: async id => users[id] });
   return { db, store };
 }
+
+test('sending uses a root reference accepted by the Firebase SDK', async t => {
+  const app = initializeApp({ databaseURL: 'http://127.0.0.1:9000?ns=demo-ally-messaging' });
+  t.after(() => deleteApp(app));
+  const database = getDatabase(app);
+  const db = memoryRealtimeDb();
+  const store = createMessagingStore({
+    ...db,
+    ref: path => ref(database, path).parent === null ? '' : path,
+  });
+
+  await store.sendMessage(1, 2, 'First message', 'CLIENT');
+  assert.equal(db.value('chatrooms/1_2/lastMessage'), 'First message');
+  assert.equal(db.value('userChatrooms/2/1_2'), true);
+});
 
 test('sending delivers trimmed messages and indexes both participants without overwriting recipient read status', async () => {
   const { db, store } = setup({ chatrooms: { '1_2': { participantDetails: { '2': { role: 'LAWYER', lastRead: 25 } } } } });

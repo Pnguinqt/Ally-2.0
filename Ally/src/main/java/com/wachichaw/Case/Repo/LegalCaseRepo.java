@@ -16,7 +16,7 @@ public interface LegalCaseRepo extends JpaRepository<LegalCasesEntity, Integer>{
 
     @Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT c FROM LegalCasesEntity c WHERE c.caseId = :caseId")
-    Optional<LegalCasesEntity> findByIdForHearingBooking(@Param("caseId") int caseId);
+    Optional<LegalCasesEntity> findByIdForUpdate(@Param("caseId") int caseId);
    
     List<LegalCasesEntity> findByClientUserId(int clientId);
     
