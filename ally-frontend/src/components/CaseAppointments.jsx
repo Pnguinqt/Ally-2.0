@@ -4,6 +4,8 @@ import { caseService as productionCaseService } from '../services/caseService.js
 import { hearingService as productionHearingService } from '../services/hearingService.js';
 import { useDemoRuntime } from '../demo/DemoContext';
 import { formatHearingDate, formatHearingTime } from '../utils/hearingDates.js';
+import { HEARING_LOAD_TIMEOUT_MS, readHearingSchedule } from '../utils/hearingSchedule.js';
+import useAppointmentPolling from '../hooks/useAppointmentPolling.js';
 import AppointmentProposalForm from './AppointmentProposalForm.jsx';
 import AppointmentActions from './AppointmentActions.jsx';
 import AppointmentMeetingDetails from './AppointmentMeetingDetails.jsx';
@@ -17,6 +19,7 @@ export default function CaseAppointments({ authData }) {
   const [appointments, setAppointments] = useState([]);
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(true);
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [view, setView] = useState('upcoming');
@@ -27,48 +30,64 @@ export default function CaseAppointments({ authData }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    const { signal } = controller;
+    const finish = () => {
+      setNow(Date.now());
+      setLoading(false);
+      setRefreshing(false);
+    };
+    const timeout = window.setTimeout(() => {
+      controller.abort();
+      setError('Some case appointments took too long to load. Refresh to try again.');
+      finish();
+    }, HEARING_LOAD_TIMEOUT_MS);
     const load = async () => {
-      setLoading(true);
+      setRefreshing(true);
       setError('');
       try {
         if (!userId) throw new Error('Please sign in to view your case appointments.');
-        const clientCases = isLawyer ? await caseService.getLawyerCases(userId) : await caseService.getClientCases(userId);
-        if (controller.signal.aborted) return;
+        const clientCases = isLawyer ? await caseService.getLawyerCases(userId, signal) : await caseService.getClientCases(userId, signal);
+        if (signal.aborted) return;
+        const caseIds = new Set(clientCases.map(item => item.caseId));
+        setCases(clientCases);
+        setAppointments(current => current.filter(item => caseIds.has(item.legalCase.caseId)));
         // Case membership is enforced by the appointment endpoints for both roles.
         const results = await Promise.allSettled(clientCases.map(async legalCase => {
-          const hearings = await hearingService.list(legalCase.caseId, controller.signal);
-          return hearings.map(hearing => ({ ...hearing, legalCase }));
+          const response = await hearingService.list(legalCase.caseId, signal);
+          const { appointments, incomplete } = readHearingSchedule(response);
+          const caseAppointments = appointments.map(hearing => ({ ...hearing, legalCase }));
+          if (!signal.aborted) {
+            setAppointments(current => [
+              ...current.filter(item => item.legalCase.caseId !== legalCase.caseId), ...caseAppointments,
+            ]);
+            if (caseAppointments.length) setLoading(false);
+          }
+          return { appointments: caseAppointments, incomplete };
         }));
-        if (controller.signal.aborted) return;
-        setCases(clientCases);
-        setAppointments(results.flatMap(result => result.status === 'fulfilled' ? result.value : []));
-        if (results.some(result => result.status === 'rejected')) {
+        if (signal.aborted) return;
+        setAppointments(results.flatMap(result => result.status === 'fulfilled' ? result.value.appointments : []));
+        if (results.some(result => result.status === 'rejected' || result.value.incomplete)) {
           setError('Some case appointments could not be loaded. Refresh to try again.');
         }
-        setNow(Date.now());
       } catch (err) {
-        if (!controller.signal.aborted) {
+        if (!signal.aborted) {
           setAppointments([]);
           setCases([]);
           setError(err.message || 'Unable to load your appointments. Please try again.');
         }
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        window.clearTimeout(timeout);
+        if (!signal.aborted) finish();
       }
     };
     load();
-    return () => controller.abort();
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, [userId, isLawyer, caseService, hearingService, refresh]);
 
-  useEffect(() => {
-    const update = () => setRefresh(value => value + 1);
-    const interval = window.setInterval(update, 60000);
-    window.addEventListener('focus', update);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('focus', update);
-    };
-  }, []);
+  useAppointmentPolling(!refreshing && !error, setRefresh);
 
   const scoped = appointments.filter(item => caseFilter === 'all' || String(item.legalCase.caseId) === caseFilter);
   const upcoming = scoped.filter(item => item.status !== 'PENDING' && new Date(item.endsAt).getTime() > now)
@@ -91,9 +110,9 @@ export default function CaseAppointments({ authData }) {
           <p className="mt-2 text-sm text-gray-500">Propose a time for your case. Confirm together with the other participant.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={loading} onClick={refreshList}
+        <button type="button" disabled={refreshing} onClick={refreshList}
           className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Refresh
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />Refresh
         </button>
         <button type="button" disabled={loading || activeCases.length === 0} onClick={() => { setEditing(null); setShowForm(true); }}
           className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg disabled:opacity-50">
@@ -153,6 +172,8 @@ export default function CaseAppointments({ authData }) {
           <div role="status" className="flex items-center justify-center gap-3 p-16 text-sm text-gray-500">
             <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />Loading case appointments…
           </div>
+        ) : visible.length === 0 && refreshing ? (
+          <p role="status" className="p-6 text-center text-sm text-gray-500">Updating case appointments…</p>
         ) : visible.length === 0 ? (
           <div className="px-5 py-16 text-center">
             <div className="flex items-center justify-center mx-auto mb-4 rounded-full h-14 w-14 bg-gray-50"><CalendarDays className="w-6 h-6 text-gray-400" /></div>

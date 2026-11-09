@@ -86,7 +86,7 @@ public class HearingService {
     @Transactional
     public void delete(int caseId, Long id, UserEntity user, long revision) {
         // A participant can remove an appointment even after the case has closed.
-        var legalCase = cases.findByIdForHearingBooking(caseId)
+        var legalCase = cases.findByIdForUpdate(caseId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
         requireParticipant(legalCase, user);
         var hearing = appointment(caseId, id);
@@ -97,7 +97,7 @@ public class HearingService {
 
     private LegalCasesEntity activeCase(int caseId, UserEntity user) {
         // All appointment mutations lock the parent case, serializing edits and acceptance.
-        var legalCase = cases.findByIdForHearingBooking(caseId)
+        var legalCase = cases.findByIdForUpdate(caseId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Case not found"));
         requireParticipant(legalCase, user);
         if (legalCase.getStatus() != CaseStatus.ACCEPTED || legalCase.getClient() == null || legalCase.getLawyer() == null) {

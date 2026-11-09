@@ -141,7 +141,7 @@ public class LegalCaseService {
 
     @org.springframework.transaction.annotation.Transactional
     public LegalCasesEntity acceptCase(int caseId, int lawyerIdPerformingAction) {
-        LegalCasesEntity legalCase = legalCaseRepo.findByIdForHearingBooking(caseId)
+        LegalCasesEntity legalCase = legalCaseRepo.findByIdForUpdate(caseId)
                 .orElseThrow(() -> new RuntimeException("Case not found with ID: " + caseId));
 
         // Authorization check

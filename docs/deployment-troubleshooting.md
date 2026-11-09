@@ -45,6 +45,12 @@ For local OTP delivery, set `BREVO_API_KEY` and `BREVO_FROM_EMAIL` in `Ally/.env
 
 Set VITE_API_BASE_URL=https://ally-backend-yspl.onrender.com and rebuild/redeploy the frontend; Vite embeds this value at build time. Do not configure a laptop address as a production RAG endpoint.
 
+## Messaging
+
+Chat uses the existing Realtime Database in `ally-2-3936e`. Set the backend's `FIREBASE_KEY_PATH` to a service account for that project. Set `JWT_SECRET` to a private random value of at least 32 bytes and use the same value across backend replicas. An unset secret generates a new key on each backend start. Sign in again after changing the signing key.
+
+Confirm that the ALLY accounts use the same user IDs as the stored chats before publishing [the participant-only database rules](../database.rules.json). From the repository root, deploy the rules to the messaging project with `firebase deploy --only database --project ally-2-3936e`, then run the updated backend and frontend.
+
 ## Commit and redeploy
 
 1. Review changes in your IDE, preserving unrelated working files. Stage only the deployment changes. Use git add -p for tracked files if there are other edits; explicitly add the new EmailDeliveryException.java, Deployment test directory and this document. Never stage .env or secret JSON files.
