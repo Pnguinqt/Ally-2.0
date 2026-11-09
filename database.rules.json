@@ -1,0 +1,41 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "messages": {
+      "$room": {
+        ".read": "auth != null && now < auth.token.allyMessagingExpiresAt && $room.matches(/^[1-9][0-9]*_[1-9][0-9]*$/) && ($room.beginsWith(auth.uid + '_') || $room.endsWith('_' + auth.uid))",
+        "$message": {
+          ".write": "auth != null && now < auth.token.allyMessagingExpiresAt && $room.matches(/^[1-9][0-9]*_[1-9][0-9]*$/) && ($room.beginsWith(auth.uid + '_') || $room.endsWith('_' + auth.uid)) && ((!data.exists() && newData.child('senderId').val() === auth.uid && newData.child('receiverId').isString() && newData.child('receiverId').val() !== auth.uid && ($room === auth.uid + '_' + newData.child('receiverId').val() || $room === newData.child('receiverId').val() + '_' + auth.uid) && newData.child('senderRole').val() === auth.token.allyRole) || (data.exists() && data.child('senderId').val() + '' === auth.uid && (!newData.exists() || (newData.child('senderId').val() === data.child('senderId').val() && newData.child('receiverId').val() === data.child('receiverId').val() && newData.child('timestamp').val() === data.child('timestamp').val() && newData.child('senderRole').val() === data.child('senderRole').val()))))",
+          ".validate": "newData.hasChildren(['senderId', 'receiverId', 'content', 'timestamp']) && newData.child('content').isString() && newData.child('content').val().length > 0 && newData.child('timestamp').isNumber()"
+        }
+      }
+    },
+    "chatrooms": {
+      "$room": {
+        ".read": "auth != null && now < auth.token.allyMessagingExpiresAt && $room.matches(/^[1-9][0-9]*_[1-9][0-9]*$/) && ($room.beginsWith(auth.uid + '_') || $room.endsWith('_' + auth.uid))",
+        ".write": "auth != null && now < auth.token.allyMessagingExpiresAt && $room.matches(/^[1-9][0-9]*_[1-9][0-9]*$/) && newData.child('participants').child(auth.uid).val() === true && (($room.beginsWith(auth.uid + '_') && newData.child('participants').child($room.replace(auth.uid + '_', '')).val() === true && newData.child('participantDetails').child($room.replace(auth.uid + '_', '')).child('lastRead').val() === data.child('participantDetails').child($room.replace(auth.uid + '_', '')).child('lastRead').val()) || ($room.endsWith('_' + auth.uid) && newData.child('participants').child($room.replace('_' + auth.uid, '')).val() === true && newData.child('participantDetails').child($room.replace('_' + auth.uid, '')).child('lastRead').val() === data.child('participantDetails').child($room.replace('_' + auth.uid, '')).child('lastRead').val()))",
+        "participants": {
+          "$user": {
+            ".validate": "($room.beginsWith($user + '_') || $room.endsWith('_' + $user)) && newData.val() === true"
+          }
+        },
+        "participantDetails": {
+          "$user": {
+            ".validate": "$room.beginsWith($user + '_') || $room.endsWith('_' + $user)",
+            "lastRead": { ".validate": "newData.isNumber() && ($user === auth.uid || newData.val() === data.val())" },
+            "role": { ".validate": "newData.val() === data.val() || ($user === auth.uid && newData.val() === auth.token.allyRole)" }
+          }
+        }
+      }
+    },
+    "userChatrooms": {
+      "$user": {
+        ".read": "auth != null && now < auth.token.allyMessagingExpiresAt && auth.uid === $user",
+        "$room": {
+          ".write": "auth != null && now < auth.token.allyMessagingExpiresAt && $room.matches(/^[1-9][0-9]*_[1-9][0-9]*$/) && ($room.beginsWith(auth.uid + '_') || $room.endsWith('_' + auth.uid)) && ($room.beginsWith($user + '_') || $room.endsWith('_' + $user)) && newData.val() === true && newData.parent().parent().parent().child('chatrooms').child($room).child('participants').child($user).val() === true"
+        }
+      }
+    }
+  }
+}

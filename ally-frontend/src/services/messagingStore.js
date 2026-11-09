@@ -85,7 +85,7 @@ export function createMessagingStore({ ref, push, update, get, remove, onValue, 
     if (!['CLIENT', 'LAWYER', 'ADMIN'].includes(role)) throw new Error('Your messaging role is missing. Sign in again.');
     const timestamp = now();
     const messageId = push(ref(`messages/${chatroomId}`)).key;
-    await update(ref(''), {
+    await update(ref(), {
       [`messages/${chatroomId}/${messageId}`]: { senderId, receiverId, content: text, timestamp, isEdited: false, senderRole: role },
       [`chatrooms/${chatroomId}/lastMessage`]: text,
       [`chatrooms/${chatroomId}/lastMessageId`]: messageId,
