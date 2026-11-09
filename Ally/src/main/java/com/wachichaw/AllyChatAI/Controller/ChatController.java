@@ -44,42 +44,48 @@ public class ChatController {
     public ResponseEntity<ChatResponse> chat(@RequestBody ChatRequest request, HttpServletRequest httpRequest) {
         ChatResponse chatResponse = new ChatResponse();
         boolean useBisaya = "ceb".equalsIgnoreCase(request.getLanguage())
-            || "bisaya".equalsIgnoreCase(request.getLanguage());
+                || "bisaya".equalsIgnoreCase(request.getLanguage());
         chatResponse.setRagEnabled(request.isUseRAG());
         try {
             chatResponse.setConversationId(request.getConversationId() == null
-                ? java.util.UUID.randomUUID().toString() : java.util.UUID.fromString(request.getConversationId()).toString());
+                    ? java.util.UUID.randomUUID().toString()
+                    : java.util.UUID.fromString(request.getConversationId()).toString());
             chatResponse.setRequestId(request.getRequestId() == null
-                ? java.util.UUID.randomUUID().toString() : java.util.UUID.fromString(request.getRequestId()).toString());
+                    ? java.util.UUID.randomUUID().toString()
+                    : java.util.UUID.fromString(request.getRequestId()).toString());
         } catch (IllegalArgumentException invalidId) {
             chatResponse.setResponse(useBisaya
-                ? "Dili maablihan kini nga panag-istorya. Palihog pagsugod og bag-ong chat."
-                : "Unable to open this conversation. Please start a new chat.");
+                    ? "Dili maablihan kini nga panag-istorya. Palihog pagsugod og bag-ong chat."
+                    : "Unable to open this conversation. Please start a new chat.");
             return ResponseEntity.badRequest().body(chatResponse);
         }
         Integer conversationUserId = extractOptionalUserId(httpRequest);
         if (httpRequest != null && httpRequest.getHeader("Authorization") != null && conversationUserId == null) {
             chatResponse.setResponse(useBisaya
-                ? "Nahuman na ang imong sesyon. Palihog sulod pag-usab aron ipadayon ang na-save nga panag-istorya."
-                : "Your session has expired. Please sign in again to continue your saved conversation.");
+                    ? "Nahuman na ang imong sesyon. Palihog sulod pag-usab aron ipadayon ang na-save nga panag-istorya."
+                    : "Your session has expired. Please sign in again to continue your saved conversation.");
             return ResponseEntity.status(401).body(chatResponse);
         }
         var priorTurns = conversationUserId == null
-            ? java.util.List.<com.wachichaw.AllyChatAI.Entity.AiChatHistoryEntity>of()
-            : aiChatHistoryService.getConversation(conversationUserId, chatResponse.getConversationId());
+                ? java.util.List.<com.wachichaw.AllyChatAI.Entity.AiChatHistoryEntity>of()
+                : aiChatHistoryService.getConversation(conversationUserId, chatResponse.getConversationId());
         chatResponse.setTimestamp(LocalDateTime.now().toString());
 
-        // Anonymous chats carry bounded browser history; signed-in chats use owned database records.
+        // Anonymous chats carry bounded browser history; signed-in chats use owned
+        // database records.
         if (conversationUserId == null && request.getPreviousMessages() != null) {
             var guestTurns = new java.util.ArrayList<com.wachichaw.AllyChatAI.Entity.AiChatHistoryEntity>();
             String previousUser = null;
             int chars = 0;
             var previous = request.getPreviousMessages();
             for (var message : previous.subList(Math.max(0, previous.size() - 40), previous.size())) {
-                if (message == null || message.content() == null) continue;
+                if (message == null || message.content() == null)
+                    continue;
                 chars += message.content().length();
-                if (chars > 80000) break;
-                if ("user".equals(message.role())) previousUser = message.content();
+                if (chars > 80000)
+                    break;
+                if ("user".equals(message.role()))
+                    previousUser = message.content();
                 else if ("assistant".equals(message.role()) && previousUser != null) {
                     var turn = new com.wachichaw.AllyChatAI.Entity.AiChatHistoryEntity();
                     turn.setUserMessage(previousUser);
@@ -94,11 +100,11 @@ public class ChatController {
         System.out.println("\n" + "=".repeat(60));
         System.out.println("📝 Received message: " + request.getMessage());
         System.out.println("🔍 RAG enabled: " + request.isUseRAG());
-        
+
         String enhancedPrompt = useBisaya
-            ? request.getMessage() + "\n\nTubaga sa natural ug klarong Cebuano (Bisaya). "
-                + "Ibilin sa English ang mga opisyal nga ngalan sa balaod, kaso, ahensya, ug legal citations kon gikinahanglan."
-            : request.getMessage();
+                ? request.getMessage() + "\n\nTubaga sa natural ug klarong Cebuano (Bisaya). "
+                        + "Ibilin sa English ang mga opisyal nga ngalan sa balaod, kaso, ahensya, ug legal citations kon gikinahanglan."
+                : request.getMessage();
 
         // ==========================================
         // STAGE 1: Python DeepSeek Validation
@@ -107,27 +113,28 @@ public class ChatController {
         // request for the same message, with extra latency and possibly a
         // different classification. Non-RAG chat keeps its existing validation.
         ValidationResponse pythonValidation = priorTurns.isEmpty() && !request.isUseRAG()
-            ? ragService.validateQuestion(request.getMessage()) : null;
-        
+                ? ragService.validateQuestion(request.getMessage())
+                : null;
+
         if (pythonValidation != null && pythonValidation.getIsValid() != null && !pythonValidation.getIsValid()) {
             System.out.println("❌ REJECTED by DeepSeek classifier (" + pythonValidation.getMethod() + ")");
             System.out.println("   Reason: " + pythonValidation.getRejectionReason());
             System.out.println("   Confidence: " + pythonValidation.getConfidence());
             System.out.println("=".repeat(60) + "\n");
-            
+
             // USE THE PYTHON MESSAGE DIRECTLY - DON'T OVERRIDE IT!
             chatResponse.setResponse(pythonValidation.getRejectionReason());
             chatResponse.setRelevantCases(null);
             chatResponse.setCaseCount(0);
             chatResponse.setConfidence("Rejected - DeepSeek");
             saveHistoryIfAuthenticated(httpRequest, request.getMessage(), chatResponse);
-            
+
             return ResponseEntity.badRequest().body(chatResponse);
         }
-        
+
         System.out.println(pythonValidation == null
-            ? "Intent validation deferred to the selected response path"
-            : "Passed intent validation");
+                ? "Intent validation deferred to the selected response path"
+                : "Passed intent validation");
         if (pythonValidation != null && pythonValidation.getConfidence() != null) {
             System.out.println("   Confidence: " + String.format("%.3f", pythonValidation.getConfidence()));
         }
@@ -140,18 +147,18 @@ public class ChatController {
         if (!javaValidation.isValid()) {
             System.out.println("❌ REJECTED by Java validator: " + javaValidation.getMessage());
             System.out.println("=".repeat(60) + "\n");
-            
+
             chatResponse.setResponse(javaValidation.getMessage());
             chatResponse.setRelevantCases(null);
             chatResponse.setCaseCount(0);
             chatResponse.setConfidence("Rejected - Length");
             saveHistoryIfAuthenticated(httpRequest, request.getMessage(), chatResponse);
-            
+
             return ResponseEntity.badRequest().body(chatResponse);
         }
 
         System.out.println("✅ PASSED basic validation (Stage 2)");
-        
+
         // ==========================================
         // Check if greeting/meta - skip RAG
         // ==========================================
@@ -159,13 +166,13 @@ public class ChatController {
             System.out.println("💬 Greeting/Meta question detected - skipping RAG");
             request.setUseRAG(false);
         }
-        
+
         // ==========================================
         // STAGE 3: RAG Processing (if enabled)
         // ==========================================
         if (request.isUseRAG()) {
             System.out.println("🔍 RAG enabled - calling Python service...");
-            
+
             RagSearchResponse ragResults;
             try {
                 ragResults = ragService.searchRelevantCases(request.getMessage(), 3);
@@ -173,8 +180,8 @@ public class ChatController {
                     throw new IllegalStateException();
             } catch (Exception unavailable) {
                 chatResponse.setResponse(useBisaya
-                    ? "Dili magamit karon ang pagpangita og kaso. Palihog sulayi pag-usab unya."
-                    : "Case retrieval is unavailable. Please try again later.");
+                        ? "Dili magamit karon ang pagpangita og kaso. Palihog sulayi pag-usab unya."
+                        : "Case retrieval is unavailable. Please try again later.");
                 chatResponse.setConfidence("Service unavailable");
                 return ResponseEntity.status(503).body(chatResponse);
             }
@@ -182,25 +189,26 @@ public class ChatController {
             chatResponse.setCanStateFinalOutcome(ragResults.isCanStateFinalOutcome());
             chatResponse.setValidationWarning(ragResults.getValidationWarning());
             List<LegalCase> cases = ragResults.getCases() == null ? List.of()
-                : ragResults.getCases().stream()
-                    .filter(item -> item.isCanStateFinalOutcome() && "verified".equals(item.getLegalValidationStatus()))
-                    .limit(3).toList();
+                    : ragResults.getCases().stream()
+                            .filter(item -> item.isCanStateFinalOutcome()
+                                    && "verified".equals(item.getLegalValidationStatus()))
+                            .limit(3).toList();
             chatResponse.setCanStateFinalOutcome(!cases.isEmpty());
             chatResponse.setLegalValidationStatus(cases.isEmpty() ? "unverified" : "verified");
-            chatResponse.setValidationWarning(null);
+            chatResponse.setValidationWarning(ragResults.getValidationWarning());
             chatResponse.setRelevantCases(cases);
             chatResponse.setCaseCount(cases.size());
             chatResponse.setConfidence(cases.isEmpty() ? null : String.format("%.1f%%", cases.get(0).getScore()));
             // Never generate an inferred outcome from retrieved excerpts.
             chatResponse.setResponse(Boolean.TRUE.equals(ragResults.getRejected())
-                ? ragResults.getRejectionReason()
-                : cases.isEmpty()
-                    ? (useBisaya
-                        ? "Walay igo nga may kalabotan nga kaso nga nakit-an sa kasamtangang napamatud-ang koleksiyon sa ALLY. Dili kini nagpasabot nga walay magamit nga desisyon sa Korte Suprema. Sulayi pagpangita sa opisyal nga Supreme Court E-Library o pagkonsulta sa kwalipikadong legal nga propesyonal."
-                        : "No sufficiently relevant case was found in ALLY’s current verified collection. This does not mean that no applicable Supreme Court decision exists. Consider searching the official Supreme Court E-Library or consulting a qualified legal professional.")
-                    : (useBisaya
-                        ? "Kining napamatud-ang mga kaso posibleng may kalabotan nga materyal sa panukiduki. Susiha nganong may kalabotan ang matag usa sa imong pangutana ug ang opisyal nga desisyon niini. Ang pagkapareho dili awtomatikong nagpasabot nga legal kining magamit o nga ang desisyon maoy magbuot sa imong sitwasyon."
-                        : "These verified cases are potentially relevant research material. Review why each relates to your question and its official decision. Similarity does not establish legal applicability or mean that a decision controls your situation."));
+                    ? ragResults.getRejectionReason()
+                    : cases.isEmpty()
+                            ? (useBisaya
+                                    ? "Walay igo nga may kalabotan nga kaso nga nakit-an sa kasamtangang napamatud-ang koleksiyon sa ALLY. Dili kini nagpasabot nga walay magamit nga desisyon sa Korte Suprema. Sulayi pagpangita sa opisyal nga Supreme Court E-Library o pagkonsulta sa kwalipikadong legal nga propesyonal."
+                                    : "No sufficiently relevant case was found in ALLY’s current verified collection. This does not mean that no applicable Supreme Court decision exists. Consider searching the official Supreme Court E-Library or consulting a qualified legal professional.")
+                            : (useBisaya
+                                    ? "Kining napamatud-ang mga kaso posibleng may kalabotan nga materyal sa panukiduki. Susiha nganong may kalabotan ang matag usa sa imong pangutana ug ang opisyal nga desisyon niini. Ang pagkapareho dili awtomatikong nagpasabot nga legal kining magamit o nga ang desisyon maoy magbuot sa imong sitwasyon."
+                                    : "These verified cases are potentially relevant research material. Review why each relates to your question and its official decision. Similarity does not establish legal applicability or mean that a decision controls your situation."));
             saveHistoryIfAuthenticated(httpRequest, request.getMessage(), chatResponse);
             return ResponseEntity.ok(chatResponse);
 
@@ -208,7 +216,7 @@ public class ChatController {
             System.out.println("ℹ️  RAG not enabled - direct to DeepSeek");
             System.out.println("=".repeat(60) + "\n");
         }
-        
+
         System.out.println("Sending to DeepSeek...");
         String response = deepSeekChatService.sendMessage(enhancedPrompt, priorTurns);
         chatResponse.setResponse(response);
@@ -217,9 +225,9 @@ public class ChatController {
         saveHistoryIfAuthenticated(userId, request.getMessage(), chatResponse);
         if (httpRequest != null) {
             auditLogService.log(userId, "AI_QUERY", "AI", "CHAT", null,
-                "Processed AI legal inquiry with RAG " + (request.isUseRAG() ? "enabled" : "disabled"), "SUCCESS");
+                    "Processed AI legal inquiry with RAG " + (request.isUseRAG() ? "enabled" : "disabled"), "SUCCESS");
         }
-        
+
         return ResponseEntity.ok(chatResponse);
     }
 
@@ -235,8 +243,8 @@ public class ChatController {
 
             int userId = Integer.parseInt(jwtUtil.extractUserId(authHeader.substring(7)));
             return ResponseEntity.ok(conversationId == null
-                ? aiChatHistoryService.getRecentForUser(userId, limit)
-                : aiChatHistoryService.getConversation(userId, conversationId));
+                    ? aiChatHistoryService.getRecentForUser(userId, limit)
+                    : aiChatHistoryService.getConversation(userId, conversationId));
         } catch (Exception e) {
             return ResponseEntity.status(401).body("Please sign in again to load your chat history.");
         }
@@ -259,7 +267,7 @@ public class ChatController {
             }
 
             auditLogService.log(userId, "DELETE_AI_CHAT", "AI_CHAT_HISTORY", "AI", String.valueOf(historyId),
-                "Deleted AI chat history entry", "SUCCESS");
+                    "Deleted AI chat history entry", "SUCCESS");
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             return ResponseEntity.status(500).body("Failed to delete AI chat history: " + e.getMessage());
@@ -277,22 +285,22 @@ public class ChatController {
 
         try {
             aiChatHistoryService.save(
-                userId,
-                userMessage,
-                chatResponse.getResponse(),
-                chatResponse.isRagEnabled(),
-                chatResponse.getCaseCount(),
-                chatResponse.getConfidence(),
-                chatResponse.getConversationId(), chatResponse.getRequestId(),
-                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(chatResponse)
-            );
+                    userId,
+                    userMessage,
+                    chatResponse.getResponse(),
+                    chatResponse.isRagEnabled(),
+                    chatResponse.getCaseCount(),
+                    chatResponse.getConfidence(),
+                    chatResponse.getConversationId(), chatResponse.getRequestId(),
+                    new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(chatResponse));
         } catch (Exception historyError) {
             historyError.printStackTrace();
         }
     }
 
     private Integer extractOptionalUserId(HttpServletRequest request) {
-        if (request == null) return null; // Isolated demo calls never inherit a real account.
+        if (request == null)
+            return null; // Isolated demo calls never inherit a real account.
         try {
             String authHeader = request.getHeader("Authorization");
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
@@ -308,27 +316,27 @@ public class ChatController {
         if (message == null || message.trim().isEmpty()) {
             return false;
         }
-        
+
         String lower = message.toLowerCase().trim();
-        
+
         if (lower.length() <= 30) {
             String[] greetings = {
-                "hi", "hello", "hey", "sup", 
-                "good morning", "good afternoon", "good evening",
-                "how are you", "what's up", "whats up"
+                    "hi", "hello", "hey", "sup",
+                    "good morning", "good afternoon", "good evening",
+                    "how are you", "what's up", "whats up"
             };
-            
+
             for (String greeting : greetings) {
                 if (lower.matches("^" + greeting + "\\s*[.!?]*$")) {
                     return true;
                 }
             }
         }
-        
+
         // Match complete bot-introduction questions, not substrings such as
         // "illegally" or legal scenarios mentioning "you" and "your employer".
         return lower.matches("^(?:who are you|what is ally|who (?:created|developed) (?:you|ally)|"
-            + "what (?:is your name|can (?:you|ally) do)|what is (?:this bot|this assistant))\\s*[.!?]*$");
+                + "what (?:is your name|can (?:you|ally) do)|what is (?:this bot|this assistant))\\s*[.!?]*$");
     }
 
     @GetMapping("/health")
@@ -338,7 +346,8 @@ public class ChatController {
         boolean ragAvailable = ragService.isRagServiceHealthy();
         health.put("ragService", ragAvailable ? "running" : "down");
         health.put("ragAvailable", ragAvailable);
-        health.put("message", ragAvailable ? "RAG available" : "RAG unavailable. Case search is temporarily unavailable; AI chat can still be used.");
+        health.put("message", ragAvailable ? "RAG available"
+                : "RAG unavailable. Case search is temporarily unavailable; AI chat can still be used.");
         health.put("relevanceThreshold", relevanceThreshold + "%");
         health.put("classifier", "DeepSeek V4 Flash");
         return ResponseEntity.ok(health);
