@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { User, LogOut, Settings, ChevronDown, MessageCircle, Bell, LayoutDashboard } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { LogOut, ChevronDown, Bell, LayoutDashboard } from 'lucide-react';
 import { getAuthData, isAuthenticated, logout, fetchUserDetails } from '../utils/auth.jsx';
 import { shouldHideNavigation } from '../utils/navigation.js';
 import NotificationDropdown from './NotificationDropdown';
-import MessageDropdown from './MessageDropdown';
 import { useSidebar } from '../contexts/SidebarContext';
-import { fetchActiveConversations, subscribeToConversations } from '../services/chatService';
 import useLawyerStatus from '../hooks/useLawyerStatus.js';
 import { useDemoRuntime } from '../demo/DemoContext';
 import LanguageSwitcher from './LanguageSwitcher.jsx';
@@ -25,13 +23,9 @@ const NavigationBar = () => {
   
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [isMessageOpen, setIsMessageOpen] = useState(false);
   const [userDetails, setUserDetails] = useState(null);
-  const [conversations, setConversations] = useState([]);
-  const [loadingConversations, setLoadingConversations] = useState(false);
   const dropdownRef = useRef(null);
   const notificationRef = useRef(null);
-  const messageRef = useRef(null);
 
   // Check if there are notifications (lawyer approval warning or other notifications)
   const hasNotifications = useMemo(() => {
@@ -42,26 +36,10 @@ const NavigationBar = () => {
     return false;
   }, [status, isLawyer, statusLoading]);
 
-  // Load conversations
-  const loadConversations = useCallback(async (userId) => {
-    if (!userId) return;
-    
-    setLoadingConversations(true);
-    try {
-      const activeConvos = demo ? await demo.messaging.fetchActiveConversations(userId) : await fetchActiveConversations(userId);
-      setConversations(activeConvos);
-    } catch (error) {
-      console.error('Error loading conversations:', error);
-    } finally {
-      setLoadingConversations(false);
-    }
-  }, [demo]);
-  const refreshConversations = useCallback(() => loadConversations(userDetails?.id), [loadConversations, userDetails?.id]);
-
   useEffect(() => {
     let active = true;
     const loadUser = async () => {
-      if (demo) { setUserDetails(demoProfile); await loadConversations(-1); return; }
+      if (demo) { setUserDetails(demoProfile); return; }
       if (!isLoggedIn || !authData?.userId) { setUserDetails(null); return; }
       try {
         const details = await fetchUserDetails(authData.userId);
@@ -72,23 +50,7 @@ const NavigationBar = () => {
     };
     loadUser();
     return () => { active = false; };
-  }, [isLoggedIn, authData?.userId, demo, demoProfile, loadConversations]);
-
-  // Production inbox metadata is live; demo conversations remain local to the tab.
-  useEffect(() => {
-    if (!isLoggedIn || !userDetails?.id) return;
-    if (demo) {
-      const interval = setInterval(() => loadConversations(userDetails.id), 30000);
-      return () => clearInterval(interval);
-    }
-    return subscribeToConversations(userDetails.id, items => {
-      setConversations(items);
-      setLoadingConversations(false);
-    }, error => {
-      console.error('Unable to refresh the inbox:', error);
-      setLoadingConversations(false);
-    });
-  }, [isLoggedIn, userDetails?.id, demo, loadConversations]);
+  }, [isLoggedIn, authData?.userId, demo, demoProfile]);
     
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -98,9 +60,6 @@ const NavigationBar = () => {
       }
       if (notificationRef.current && !notificationRef.current.contains(event.target)) {
         setIsNotificationOpen(false);
-      }
-      if (messageRef.current && !messageRef.current.contains(event.target)) {
-        setIsMessageOpen(false);
       }
     };
 
@@ -129,13 +88,6 @@ const NavigationBar = () => {
   const toggleNotifications = () => {
     setIsNotificationOpen(!isNotificationOpen);
     setIsDropdownOpen(false);
-    setIsMessageOpen(false);
-  };
-
-  const toggleMessages = () => {
-    setIsMessageOpen(!isMessageOpen);
-    setIsNotificationOpen(false);
-    setIsDropdownOpen(false);
   };
 
   // Get user's initials for profile display
@@ -155,8 +107,6 @@ const NavigationBar = () => {
     // Convert to title case for display
     return accountType.charAt(0).toUpperCase() + accountType.slice(1).toLowerCase();
   };
-  const unreadConversations = conversations.filter(conversation => conversation.isRead === false).length;
-
   // UserTypeBadge component
   const UserTypeBadge = () => {
     const userType = getUserType();
@@ -192,7 +142,6 @@ const NavigationBar = () => {
                 {/* Right Side Icons and Profile */}
                 <div className="flex items-center gap-2 md:gap-4">
                   <LanguageSwitcher inNavigation />
-                  {/* Message and Notification Icons */}
                   <div className="relative" ref={notificationRef}>
                     <button
                       aria-label="Notifications"
@@ -217,31 +166,6 @@ const NavigationBar = () => {
                     />
                   </div>
 
-                  <div className="relative" ref={messageRef}>
-                    <button
-                      aria-label="Messages"
-                      onClick={toggleMessages}
-                      className={`relative flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
-                        isMessageOpen ? 'bg-blue-50' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <MessageCircle 
-                        className={`w-5 h-5 ${isMessageOpen ? 'text-blue-600' : 'text-[#2B62C4]'}`} 
-                        strokeWidth={1.8} 
-                      />
-                      {unreadConversations > 0 && <span aria-hidden="true" title={`${unreadConversations} unread conversations`}
-                        className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-blue-600 px-1 text-[10px] font-semibold text-white">{unreadConversations > 9 ? '9+' : unreadConversations}</span>}
-                    </button>
-                    <MessageDropdown
-                      isOpen={isMessageOpen}
-                      onClose={() => setIsMessageOpen(false)}
-                      conversations={conversations}
-                      currentUser={userDetails}
-                      loading={loadingConversations}
-                      onRefresh={refreshConversations}
-                    />
-                  </div>
-                  
                   {/* Profile Dropdown */}
                   <div className="relative" ref={dropdownRef}>
                     <div 
